@@ -55,7 +55,8 @@ export default function IndexPage({params}: { params: { sessionid: string };
       const rankedNames = consensusRankings.reduce<string>((prev, current, index) => {
         return prev + `, ${current.name}`;
       }, "");
-
+      toast.dismiss(toastid);
+      toastid = toast.loading('Submitting proposal to ordao..');
       // This request object has to be the same for all participants of a breakout room.
       await orclient.proposeBreakoutResult({
         // TODO: set real groupNum and meetingNum

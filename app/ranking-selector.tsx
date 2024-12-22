@@ -158,7 +158,7 @@ export function RankingSelector({
               )
             ) {
               const radio = document.querySelector(
-                `input[type=radio][value=${user.walletaddress}]`
+                `input[type=radio][value="${user.walletaddress}"]`
               ) as HTMLInputElement;
               if (radio) {
                 radio.checked = false;
@@ -239,7 +239,7 @@ export function RankingSelector({
                   <input
                     type={'radio'}
                     name={'rankings'}
-                    value={'upvote'}
+                    value={user?.walletaddress}
                     onChange={() => setRanking(user.walletaddress, 'upvote')}
                   />
                 </div>
