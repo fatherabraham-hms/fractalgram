@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useContext } from 'react';
 import { getRecentSessionsForUserWalletAddressAction } from '@/app/actions';
 import { SESSION_POLLING_INTERVAL } from '../../data/constants/app_constants';
 import {
@@ -13,8 +13,12 @@ import { Link } from '@chakra-ui/next-js';
 import { getSessionStatusLabel } from '@/lib/utils';
 import * as React from 'react';
 import { Url } from 'next/dist/shared/lib/router/router';
+import { useRouter } from 'next/navigation';
+import { AuthContext } from '../../data/context/Contexts';
 
 export function SessionList() {
+  const router = useRouter();
+  const authContext = useContext(AuthContext);
   const [isLoading, setIsLoading] = useState(true);
   const [recentSessions, setRecentSessions] = useState<
     {
@@ -58,6 +62,9 @@ export function SessionList() {
   }
 
   if (!isLoading && recentSessions && recentSessions?.length === 0) {
+    if (authContext.isLoggedIn && !authContext.hasProfile) {
+      router.push('/profile');
+    }
     return <div><h2>You do not have any sessions yet, check with a leader to get one started!</h2></div>
   }
 

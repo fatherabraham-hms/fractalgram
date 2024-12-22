@@ -5,7 +5,6 @@ import {
   Container,
 } from '@chakra-ui/react';
 import { Link } from '@chakra-ui/next-js';
-import { Logo } from '@/components/icons';
 import { NavSidebar } from '@/components/app-shell/nav-sidebar';
 import { UserPill } from '@privy-io/react-auth/ui';
 import { useEffect, useState } from 'react';
@@ -76,8 +75,8 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
                   className="flex items-center gap-2 font-semibold"
                   href="/"
                 >
-                  <Logo />
-                  <span className="">ACME</span>
+                  {/*<Logo />*/}
+                  <span className="">Fractalgram</span>
                 </Link>
               </div>
               <div className="flex-1 overflow-auto py-2">
@@ -91,8 +90,8 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
                 className="flex items-center gap-2 font-semibold lg:hidden"
                 href="/"
               >
-                <Logo />
-                <span className="">ACME</span>
+                {/*<Logo />*/}
+                <span className="">Fractalgram</span>
               </Link>
               <UserPill />
             </header>

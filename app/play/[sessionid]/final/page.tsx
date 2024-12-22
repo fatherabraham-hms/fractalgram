@@ -7,7 +7,6 @@ import { Spinner } from '@chakra-ui/react';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import toast from 'react-hot-toast';
 import { useOrclient } from '@ordao/privy-react-orclient';
-import { useRouter } from 'next/navigation';
 
 
 export default function IndexPage({params}: { params: { sessionid: string };
@@ -16,7 +15,6 @@ export default function IndexPage({params}: { params: { sessionid: string };
     ConsensusWinnerModel[]
   >([]);
   const [isLoading, setLoading] = useState(true);
-  const router = useRouter();
   const {
     user,
   } = usePrivy();
@@ -51,9 +49,8 @@ export default function IndexPage({params}: { params: { sessionid: string };
   }, []);
 
   async function makeOrecProposal() {
-    console.log('click');
+    let toastid = toast.loading('Connecting to orclient..');
     if (orclient) {
-      toast.loading('Making proposal..');
       const rankings = consensusRankings.map((winner) => winner.walletaddress);
       const rankedNames = consensusRankings.reduce<string>((prev, current, index) => {
         return prev + `, ${current.name}`;
@@ -71,17 +68,21 @@ export default function IndexPage({params}: { params: { sessionid: string };
           propTitle: `Session ${params.sessionid}`,
           propDescription: rankedNames
         }
+      }).then(() => {
+        toast.success('Proposal sent successfully!');
+      }).catch(() => {
+        toast.error('Propose breakout failed');
+      }).finally(() => {
+        toast.dismiss(toastid);
       });
-      console.log("Propose breakout returned");
     } else {
-      toast.error('Could not connect to orclient/blockchain');
+      toast.dismiss(toastid);
+      toast.error('Could not connect to orclient');
     }
   }
 
   function pushOnChain() {
-    makeOrecProposal().then(() => {
-      toast.success('Submitted On Chain!');
-    });
+    makeOrecProposal().then();
   }
 
   return (

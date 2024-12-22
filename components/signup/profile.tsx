@@ -7,6 +7,8 @@ import { useForm, SubmitHandler } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { RespectUser } from '@/lib/dtos/respect-user.dto';
 import { usePrivy } from '@privy-io/react-auth';
+import { useEffect } from 'react';
+import { getUserProfileByWalletAddress } from '@/lib/db';
 
 type SignupInputs = {
   name: string;
@@ -14,6 +16,10 @@ type SignupInputs = {
   email: string;
   telegram: string;
 };
+
+type UserProfileResponse = {
+  name: string | null;   username: string | null;   email: string | null;   walletaddress: string | null;   loggedin: boolean | null;   lastlogin: Date;   permissions: number | null;   telegram: string | null;
+}
 
 export function Profile() {
   const router = useRouter();
@@ -25,8 +31,27 @@ export function Profile() {
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<SignupInputs>()
+
+  useEffect(() => {
+    if (ready && authenticated && user?.wallet?.address) {
+     getUserProfileByWalletAddress(user?.wallet?.address).then((response) => {
+       let userProfile: UserProfileResponse;
+       if (response && response.length > 0) {
+          userProfile = response[0];
+         const { name, username, email, telegram } = userProfile;
+         setValue('name', name || '' );
+         setValue('username', username || '');
+         setValue('email', email || '' );
+         setValue('telegram', telegram || '');
+       }
+     }).catch((error) => {
+       console.error('Error fetching user profile:', error);
+     });
+    }
+  }, [ready, authenticated, user, setValue]);
 
   const onSubmit: SubmitHandler<SignupInputs> = (formProps) => {
     updateUserProfileAction({
@@ -40,7 +65,7 @@ export function Profile() {
         toast.error(response?.message);
       }
     })
-    .catch((error) => {
+    .catch(() => {
       router.push('/error');
     });
   };
