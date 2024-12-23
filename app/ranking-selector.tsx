@@ -9,7 +9,6 @@ import {
 } from '@/lib/models/consensus-session-setup.model';
 import {
   getConsensusSetupAction,
-  getRemainingAttendeesForSessionAction,
   getVotingRoundMultiAction,
   setSingleRankingConsensusStatusAction,
   setSingleVoteAction
@@ -64,12 +63,15 @@ export function RankingSelector({
       }
       setGroupCount(resp?.groupMemberCount);
       setTotalCount(
-        resp?.currentVotesForRanking.reduce((acc: number, ranking: Vote) => acc + ranking.count, 0) || 0
+        resp?.currentVotesForRanking.reduce(
+          (acc: number, ranking: Vote) => acc + ranking.count,
+          0
+        ) || 0
       );
       setConsensusReached(resp?.hasConsensusOnRanking);
       setRankingConfig({
         groupNum: 1,
-        attendees: resp?.remainingAttendees as RespectUser[] || [],
+        attendees: (resp?.remainingAttendees as RespectUser[]) || [],
         rankingScheme: 'numeric-descending',
         votes: resp?.currentVotesForRanking || []
       });
@@ -79,7 +81,7 @@ export function RankingSelector({
         router.push(`/play/${consensusSessionId}/final`);
       }
     });
-  }
+  };
 
   useEffect(() => {
     // INITIALIZE
@@ -149,17 +151,26 @@ export function RankingSelector({
         setHasClickedRadionButton(false);
         if (rankingConfig?.attendees && rankingConfig?.attendees.length > 0) {
           rankingConfig.attendees.forEach((user: RespectUser) => {
-            const radio = document.querySelector(
-              `input[type=radio][value=${user.walletaddress}]`
-            ) as HTMLInputElement;
-            if (radio) {
-              radio.checked = false;
+            if (
+              rankingConfig?.attendees?.length > 1 &&
+              rankingConfig?.attendees.some(
+                (u) => u.walletaddress === user.walletaddress
+              )
+            ) {
+              const radio = document.querySelector(
+                `input[type=radio][value="${user.walletaddress}"]`
+              ) as HTMLInputElement;
+              if (radio) {
+                radio.checked = false;
+              }
             }
           });
         }
         fetchVotingRoundMultiAction();
       })
-      .catch(() => toast.error('Oops! An error occured, please try again!'));
+      .catch(() => {
+        toast.error('Oops! An error occured, please try again!');
+      });
   }
 
   const calculateRankingPercentageForCandidate = (user: RespectUser) => {
@@ -177,55 +188,57 @@ export function RankingSelector({
   // <pre>Rankings: { JSON.stringify(rankings[currentRankNumber], null, 2) }</pre>
 
   return (
-      <Container maxW="6xl" py={10} px={4}>
-        <Box
-          border="1px solid"
-          borderColor="gray.100"
-          padding={5}
-          rounded="md"
-          boxShadow="lg"
-          overflow="hidden"
+    <Container maxW="6xl" py={10} px={4}>
+      <Box
+        border="1px solid"
+        borderColor="gray.100"
+        padding={5}
+        rounded="md"
+        boxShadow="lg"
+        overflow="hidden"
+      >
+        <chakra.h3
+          fontSize="xl"
+          fontWeight="bold"
+          textAlign="center"
+          color="gray.600"
         >
-          <chakra.h3
-            fontSize="xl"
-            fontWeight="bold"
-            textAlign="center"
-            color="gray.600"
-          >
-            Voting Level: {currentRankNumber}
-          </chakra.h3>
-          <chakra.h4
-            fontSize="md"
-            fontWeight="bold"
-            textAlign="center"
-            color="gray.600"
-          >
-            {totalCount} Votes cast by {groupCount} Attendees
-          </chakra.h4>
+          Voting Level: {currentRankNumber}
+        </chakra.h3>
+        <chakra.h4
+          fontSize="md"
+          fontWeight="bold"
+          textAlign="center"
+          color="gray.600"
+        >
+          {totalCount} Votes cast by {groupCount} Attendees
+        </chakra.h4>
 
-          <Divider />
-          {consensusReached && authContext?.isAdmin && (
-            <Alert
-              message={'You have successfully reached consensus on this topic!'}
-              variant={'success'}
-              callback={nextLevel}
-            />
-          )}
-          {consensusReached && !authContext?.isAdmin && (
-            <Alert
-              message={'You have successfully reached consensus on this topic!'}
-              variant={'success'}
-            />
-          )}
-          {loading && <Progress size='xs' isIndeterminate colorScheme={'cyan'} />}
-          <form className="border shadow-sm rounded-lg">
-            {rankingConfig && rankingConfig?.attendees?.length > 0 && rankingConfig?.attendees?.map((user: RespectUser) => (
+        <Divider />
+        {consensusReached && authContext?.isAdmin && (
+          <Alert
+            message={'You have successfully reached consensus on this topic!'}
+            variant={'success'}
+            callback={nextLevel}
+          />
+        )}
+        {consensusReached && !authContext?.isAdmin && (
+          <Alert
+            message={'You have successfully reached consensus on this topic!'}
+            variant={'success'}
+          />
+        )}
+        {loading && <Progress size="xs" isIndeterminate colorScheme={'cyan'} />}
+        <form className="border shadow-sm rounded-lg">
+          {rankingConfig &&
+            rankingConfig?.attendees?.length > 0 &&
+            rankingConfig?.attendees?.map((user: RespectUser) => (
               <div key={user.walletaddress} className={'flex items-center'}>
                 <div className={'flex-grow-0 p-4'}>
                   <input
                     type={'radio'}
                     name={'rankings'}
-                    value={'upvote'}
+                    value={user?.walletaddress}
                     onChange={() => setRanking(user.walletaddress, 'upvote')}
                   />
                 </div>
@@ -266,8 +279,8 @@ export function RankingSelector({
                 </div>
               </div>
             ))}
-          </form>
-        </Box>
-      </Container>
+        </form>
+      </Box>
+    </Container>
   );
 }

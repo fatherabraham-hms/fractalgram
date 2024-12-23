@@ -1,25 +1,31 @@
 'use client';
 import { getConsensusSessionWinnersAction } from '@/app/actions';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ConsensusWinnerModel } from '@/lib/models/consensus-winner.model';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@chakra-ui/react';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
+import toast from 'react-hot-toast';
+import { useOrclient } from '@ordao/privy-react-orclient';
 
-export default function IndexPage({
-  params
-}: {
-  params: { sessionid: string };
+
+export default function IndexPage({params}: { params: { sessionid: string };
 }) {
   const [consensusRankings, setConsensusRankings] = useState<
     ConsensusWinnerModel[]
   >([]);
   const [isLoading, setLoading] = useState(true);
-
-  // const contact = getContract({
-  //   address: '',
-  //   chain: sepolia,
-  //   client: null
-  // });
+  const {
+    user,
+  } = usePrivy();
+  const conWallets = useWallets();
+  const wallet = user?.wallet;
+  const userWallet = useMemo(() => {
+    if (conWallets && conWallets.ready) {
+      return conWallets.wallets.find(w => w.address === wallet?.address);
+    }
+  }, [wallet]);
+  const orclient = useOrclient('op-sepolia', userWallet);
 
   let warning = (
     <div className="flex items-center justify-center h-96">
@@ -42,16 +48,42 @@ export default function IndexPage({
     );
   }, []);
 
+  async function makeOrecProposal() {
+    let toastid = toast.loading('Connecting to orclient..');
+    if (orclient) {
+      const rankings = consensusRankings.map((winner) => winner.walletaddress);
+      const rankedNames = consensusRankings.reduce<string>((prev, current, index) => {
+        return prev + `, ${current.name}`;
+      }, "");
+      toast.dismiss(toastid);
+      toastid = toast.loading('Submitting proposal to ordao..');
+      // This request object has to be the same for all participants of a breakout room.
+      await orclient.proposeBreakoutResult({
+        // TODO: set real groupNum and meetingNum
+        groupNum: 1,
+        meetingNum: 10,
+        rankings: rankings,
+        // Metadata field is optional.
+        metadata: {
+          // Could use this to provide names for each rank
+          propTitle: `Session ${params.sessionid}`,
+          propDescription: rankedNames
+        }
+      }).then(() => {
+        toast.success('Proposal sent successfully!');
+      }).catch(() => {
+        toast.error('Propose breakout failed');
+      }).finally(() => {
+        toast.dismiss(toastid);
+      });
+    } else {
+      toast.dismiss(toastid);
+      toast.error('Could not connect to orclient');
+    }
+  }
+
   function pushOnChain() {
-    const params = new URLSearchParams();
-    params.append('groupnumber', '1');
-    consensusRankings.map((winner, index) => {
-      if (winner) {
-        params.append(`vote${index + 1}`, winner.walletaddress);
-      }
-    });
-    // add the params to the url
-    window.open(`https://of.frapps.xyz?${params.toString()}`, '_blank', 'noopener,noreferrer');
+    makeOrecProposal().then();
   }
 
   return (
@@ -78,10 +110,9 @@ export default function IndexPage({
           </div>
           {
             <Button
-              className="mt-4 w-50 bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
-              onClick={() => pushOnChain()}
-            >
-              Open Frapps Interface
+              className="mt-4 w-50 bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded"
+              onClick={() => pushOnChain()}>
+              Push on chain!
             </Button>
           }
         </div>
