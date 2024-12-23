@@ -35,9 +35,8 @@ export function UsersTable() {
         const result: Partial<RespectUser[]> | unknown = await getUsers(query, offset);
         const users = result as Partial<RespectUser[]>;
         setUsers(users || []);
-      } catch (error) {
+      } catch {
         toast.error('Could not fetch Users!');
-        console.error('Error fetching data:', error);
       }
     };
     fetchUserData();
@@ -98,7 +97,6 @@ function UserRow({ user, groupAddresses, setGroupAddresses }: {
   setGroupAddresses: any
 }) {
   function handleCheckbox(event: any) {
-    console.log(event.target.value);
     if (event.target.checked) {
       setGroupAddresses([...groupAddresses, event.target.value]);
     } else {

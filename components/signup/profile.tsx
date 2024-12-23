@@ -47,8 +47,8 @@ export function Profile() {
          setValue('email', email || '' );
          setValue('telegram', telegram || '');
        }
-     }).catch((error) => {
-       console.error('Error fetching user profile:', error);
+     }).catch(() => {
+       console.error('Error fetching user profile');
      });
     }
   }, [ready, authenticated, user, setValue]);

@@ -168,8 +168,7 @@ export function RankingSelector({
         }
         fetchVotingRoundMultiAction();
       })
-      .catch((e) => {
-        console.error(e);
+      .catch(() => {
         toast.error('Oops! An error occured, please try again!');
       });
   }
