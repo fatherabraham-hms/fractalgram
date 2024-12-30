@@ -61,89 +61,6 @@ export type AuthenticationErrorResponse = {
   error: string;
 };
 
-async function checkAccessToken() {
-  const accessToken = cookies().get('privy-token');
-  if (!accessToken?.value) {
-    return null;
-  }
-  const verifiedClaims = await privy.verifyAuthToken(accessToken.value);
-  if (!verifiedClaims) {
-    return null;
-  } else {
-    return verifiedClaims;
-  }
-}
-
-async function isAuthorized() {
-  debug('isAuthorized: checking BE auth');
-  const claims = await checkAccessToken();
-  if (!claims) {
-    throw new Error('Not authorized');
-  }
-  const privyUserId = { value: claims?.userId };
-  const activeWalletAddress = cookies().get('activeWalletAddress');
-  const ipaddress = (headers().get('x-forwarded-for') ?? '127.0.0.1').split(',')[0];
-  if (activeWalletAddress?.value && (!privyUserId?.value || !ipaddress)) {
-    await logoutAction();
-  }
-  if (!ipaddress || !activeWalletAddress?.value || !privyUserId?.value) {
-    if (!ipaddress) {
-      throw new Error('no ip address found');
-    }
-    if (!activeWalletAddress?.value) {
-      throw new Error('no active wallet address found');
-    }
-    if (!privyUserId?.value) {
-      throw new Error('no privyUserId found');
-    }
-    redirect('/');
-  }
-  let session = await getBeUserSession(ipaddress, activeWalletAddress.value, privyUserId?.value || '');
-
-  if (!session || session.length === 0) {
-    // if their backend session is not found, but they are authorized, create a new session
-    // TODO check if the claim is expired
-    if (claims?.appId === process.env.NEXT_PUBLIC_PRIVY_APP_ID
-      && claims?.issuer === 'privy.io'
-      && activeWalletAddress?.value?.length > 8) {
-      const profile = await getUserProfileByWalletAddress(activeWalletAddress?.value);
-      let profileData: Partial<RespectUser> | null = null;
-      if (Array.isArray(profile) && profile.length > 0) {
-        profileData = profile[0] as RespectUser;
-      }
-      if (profileData?.walletaddress?.toLowerCase() === activeWalletAddress?.value.toLowerCase()) {
-        const renewalUser: any = {
-          wallet: {
-            address: activeWalletAddress?.value
-          }
-        };
-        debug(`renewing session for: ${profileData?.walletaddress}`);
-        await login(renewalUser);
-        session = await getBeUserSession(ipaddress, activeWalletAddress.value, privyUserId?.value || '');
-      }
-    } else {
-      // if no session is returned, make sure they are logged out fully.
-      await logoutAction();
-      throw new Error('logging out due to no session');
-    }
-  }
-  return session[0];
-}
-
-async function isMemberOfSessionAction(consensusSessionId: number, beSession?: UserBeSessionsModel, isAdmin?: boolean): Promise<boolean> {
-  if (beSession?.walletaddress && typeof isAdmin === 'boolean') {
-    const isMember = await getFirstMatchingMemberOfSession(consensusSessionId, beSession.walletaddress);
-    return isAdmin || isMember?.length === 1;
-  }
-  const beSessionFresh = await isAuthorized();
-  if (!beSessionFresh || !beSessionFresh.sessionid || !beSessionFresh.walletaddress) {
-    return false;
-  }
-  const isAdminFresh = await _isLoggedInUserAdmin(beSessionFresh);
-  const isMember = await getFirstMatchingMemberOfSession(consensusSessionId, beSessionFresh.walletaddress);
-  return isAdminFresh || isMember?.length === 1;
-}
-
 export async function login(user: User) {
   debug(`logging in: ${user.wallet?.address || 'no address'}`);
   const accessToken = cookies().get('privy-token');
@@ -161,7 +78,7 @@ export async function login(user: User) {
     if (user && user.wallet?.address) {
       cookies().set('activeWalletAddress', user.wallet?.address);
       const ipAddress = (headers().get('x-forwarded-for') ?? '127.0.0.1').split(',')[0];
-      const accountId = await createUserAccountIfNotExists(user);
+      const accountId = await _createUserAccountIfNotExists(user);
       if (accountId === null) {
         throw new Error('Could not create user profile due to an error..');
       } else {
@@ -190,30 +107,8 @@ export async function login(user: User) {
   }
 }
 
-/**
- * Caution - this method must remain private so it does not expose the userid
- * @param user
- */
-async function createUserAccountIfNotExists(user: User): Promise<number | null> {
-  const address = user.wallet?.address;
-  let userId: number | null = null;
-  if (!address) {
-    return null;
-  }
-  const useridResp = await getUserIdByWalletAddress(address);
-  if (!useridResp || useridResp.length === 0) {
-    const createProfileResp = await createUserProfile(user);
-    if (createProfileResp && createProfileResp.length > 0 && typeof createProfileResp[0].id === 'number') {
-      userId = createProfileResp[0].id;
-    }
-  } else if (useridResp && useridResp.length > 0 && typeof useridResp[0].id === 'number') {
-    userId = useridResp[0].id;
-  }
-  return userId;
-}
-
 export async function isLoggedInAction(address: string): Promise<boolean> {
-  const session = await isAuthorized();
+  const session = await _isAuthorized();
   const dbResult = await getUserProfileByWalletAddress(address);
   if (dbResult && dbResult.length > 0 && dbResult[0].loggedin && session && session?.sessionid?.length > 10) {
     return true;
@@ -223,7 +118,7 @@ export async function isLoggedInAction(address: string): Promise<boolean> {
 
 export async function logoutAction() {
   debug('logging out');
-  await checkAccessToken();
+  await _checkAccessToken();
   const activeWalletAddress = cookies().get('activeWalletAddress');
   if (activeWalletAddress?.value) {
     await setUserLoginStatusById(activeWalletAddress?.value, false);
@@ -237,7 +132,7 @@ export async function logoutAction() {
 /*********** USERS ***********/
 
 export async function getUsers(query: string = '', offset: number = 0) {
-  await checkAccessToken();
+  await _checkAccessToken();
   const result = await getAllUsers(query, offset);
   if (result && result.users && result.users.length > 0) {
     result?.users.forEach((user: Partial<SelectUser>) => {
@@ -250,7 +145,7 @@ export async function getUsers(query: string = '', offset: number = 0) {
 }
 
 export async function getUserProfile(address: string): Promise<Partial<RespectUser> | null> {
-  await checkAccessToken();
+  await _checkAccessToken();
   const profile = await getUserProfileByWalletAddress(address);
   let profileData: Partial<RespectUser> | null = null;
   if (Array.isArray(profile) && profile.length > 0) {
@@ -264,7 +159,7 @@ export async function getUserProfile(address: string): Promise<Partial<RespectUs
 export async function updateUserProfileAction(user: Partial<RespectUser>): Promise<Partial<RespectUser> | {
   message: string
 }> {
-  await checkAccessToken();
+  await _checkAccessToken();
   const result = await updateUserProfile(user);
   return result as Partial<RespectUser> | { message: string };
 }
@@ -275,18 +170,9 @@ export async function updateUserProfileAction(user: Partial<RespectUser>): Promi
 export async function isLoggedInUserAdmin(): Promise<boolean> {
   debug('isLoggedInUserAdmin: checking if user is admin');
   const admins = process.env.RESPECT_GAME_ADMINS?.split(',') || [];
-  const session = await isAuthorized();
+  const session = await _isAuthorized();
   if (session) {
     return admins?.some((addr) => addr.toLowerCase() === session?.walletaddress?.toLowerCase());
-  }
-  return false;
-}
-
-async function _isLoggedInUserAdmin(beSession: SelectUserBeSession): Promise<boolean> {
-  debug('isLoggedInUserAdmin: checking if user is admin');
-  const admins = process.env.RESPECT_GAME_ADMINS?.split(',') || [];
-  if (beSession && beSession.walletaddress) {
-    return admins?.some((addr) => addr.toLowerCase() === beSession.walletaddress?.toLowerCase());
   }
   return false;
 }
@@ -305,7 +191,7 @@ const defaultConsensusSession: ConsensusSessionDto = {
 };
 
 export async function createConsensusSessionAndUserGroupAction(groupAddresses: string[]) {
-  await checkAccessToken();
+  await _checkAccessToken();
   const session: ConsensusSessionDto = defaultConsensusSession;
   // TODO - check incoming session if updated
   if (Object?.keys(session)?.length === 0) {
@@ -340,8 +226,8 @@ export async function getConsensusSetupAction(consensusSessionId: number): Promi
   if (consensusSessionId <= 0) {
     throw new Error('Invalid session id');
   }
-  await checkAccessToken();
-  const isMemberofSession = await isMemberOfSessionAction(consensusSessionId);
+  await _checkAccessToken();
+  const isMemberofSession = await _isMemberOfSessionAction(consensusSessionId);
   if (!isMemberofSession) {
     throw new Error('Not a member of session');
   }
@@ -364,7 +250,7 @@ export async function getConsensusSetupAction(consensusSessionId: number): Promi
 }
 
 export async function getRecentSessionsForUserWalletAddressAction() {
-  const beSession = await isAuthorized();
+  const beSession = await _isAuthorized();
   if (!beSession || !beSession.sessionid || !beSession.walletaddress || !beSession.userid) {
     debug('getRecentSessionsForUserWalletAddressAction: Not authorized');
     return null;
@@ -399,25 +285,18 @@ export async function setSingleVoteAction(
     created: new Date(),
     updated: new Date()
   });
-  return getCurrentVotesForSessionByRankingAction(context, consensusSessionId, ranking);
-}
-
-async function getCurrentVotesForSessionByRankingAction(context: UserBeContext, consensusSessionId: number, ranking: number) {
-  if (!context || !context.groupid) {
-    throw new Error('Not authorized');
-  }
-  return getCurrentVotesForSessionByRanking('walletaddress', consensusSessionId, context.groupid, ranking) as Promise<Vote[]>;
+  return _getCurrentVotesForSessionByRankingAction(context, consensusSessionId, ranking);
 }
 
 /*********** CONSENSUS STATUS ***********/
 
 export async function setSingleRankingConsensusStatusAction(consensusSessionId: number, rankingValue: number) {
-  const beSession = await isAuthorized();
+  const beSession = await _isAuthorized();
   if (!beSession || !beSession.sessionid || !beSession.walletaddress || !beSession.userid) {
     throw new Error('Not authorized');
   }
   const isAdmin = await _isLoggedInUserAdmin(beSession);
-  const isMemberofSession = await isMemberOfSessionAction(consensusSessionId);
+  const isMemberofSession = await _isMemberOfSessionAction(consensusSessionId);
   if (!isAdmin && !isMemberofSession) {
     throw new Error('Not a member of session');
   }
@@ -468,17 +347,13 @@ export async function setSingleRankingConsensusStatusAction(consensusSessionId: 
   }
 }
 
-async function _getGroupMemberCountAction(context: UserBeContext) {
-  return context.groupMembers.length;
-}
-
 export async function getRemainingAttendeesForSessionAction(consensusSessionId: number) {
-  const beSession = await isAuthorized();
+  const beSession = await _isAuthorized();
   if (!beSession || !beSession.sessionid || !beSession.walletaddress || !beSession.userid) {
     throw new Error('Not authorized');
   }
   const isAdmin = await _isLoggedInUserAdmin(beSession);
-  const isMemberofSession = await isMemberOfSessionAction(consensusSessionId);
+  const isMemberofSession = await _isMemberOfSessionAction(consensusSessionId);
   if (!isAdmin && !isMemberofSession) {
     throw new Error('Not a member of session');
   }
@@ -489,52 +364,13 @@ export async function getRemainingAttendeesForSessionAction(consensusSessionId: 
   return getRemainingVoteCandidatesForSession(consensusSessionId);
 }
 
-async function getRemainingRankingsForSessionAction(context: UserBeContext, consensusSessionId: number) {
-  if (!context || !context.consensusSession || !context.beSession?.userid) {
-    throw new Error('Not authorized');
-  }
-  // TODO make this work with other ranking schemes
-  const highestRanking = context.consensusSession?.rankinglimit || 6;
-  const rankingsWithConsensusResp = await getRankingsWithConsensusForSession(consensusSessionId, context.consensusSession?.sessionstatus, context.groupid);
-  // NO VOTES YET
-  // return list of all rankings, based on 'numeric-descending' if no rankings exist in db
-  if (!rankingsWithConsensusResp || rankingsWithConsensusResp.length === 0) {
-    return Array.from({ length: highestRanking }, (_, i) => i + 1).reverse();
-    // INCOMPLETE VOTES rankings and session has NOT finished
-  } else if (rankingsWithConsensusResp.length > 0
-    && context.consensusSession?.sessionstatus !== 2
-    && typeof rankingsWithConsensusResp[0].rankingvalue === 'number') {
-    const consensusReachedForCurrentRanking = await _hasConsensusOnRanking(consensusSessionId, context.groupid, rankingsWithConsensusResp[0].rankingvalue);
-    const existingRankings = rankingsWithConsensusResp.map((ranking) => ranking.rankingvalue) as number[];
-
-    let remainingRankings: number[];
-    // CONSENSUS NOT REACHED, include the current ranking in the list, but exclude those having consensus
-    if (!consensusReachedForCurrentRanking) {
-      remainingRankings = Array.from({ length: highestRanking }, (_, i) => i + 1).filter((ranking) => !existingRankings.includes(ranking)).reverse();
-      // CONSENSUS REACHED, exclude the current ranking from the list
-    } else {
-      remainingRankings = Array.from({ length: highestRanking }, (_, i) => i + 1).filter((ranking) => !existingRankings.includes(ranking)).reverse();
-    }
-    // if there are no more rankings to vote on, set the session status to finished, etc..
-    await _handleSessionUpdates(consensusSessionId,
-      context.consensusSession.sessionstatus,
-      context.groupid,
-      remainingRankings,
-      context.beSession.userid);
-    return remainingRankings;
-    // VOTING FINISHED, rankings will need to be verified then pushed onchain next
-  } else if (rankingsWithConsensusResp.length > 0 && context.consensusSession?.sessionstatus === 2) {
-    return [];
-  }
-}
-
 export async function getConsensusSessionWinnersAction(consensusSessionId: number) {
-  const beSession = await isAuthorized();
+  const beSession = await _isAuthorized();
   if (!beSession || !beSession.sessionid || !beSession.walletaddress || !beSession.userid) {
     throw new Error('Not authorized');
   }
   const isAdmin = await _isLoggedInUserAdmin(beSession);
-  const isMemberofSession = await isMemberOfSessionAction(consensusSessionId);
+  const isMemberofSession = await _isMemberOfSessionAction(consensusSessionId);
   if (!isAdmin && !isMemberofSession) {
     throw new Error('Not a member of session');
   }
@@ -564,17 +400,11 @@ export async function getConsensusSessionWinnersAction(consensusSessionId: numbe
   });
 }
 
-async function _hasConsensusOnRankingAction(context: UserBeContext, consensusSessionId: number, rankingValue: number) {
-  if (rankingValue === 0) {
-    return false;
-  }
-  return _hasConsensusOnRanking(consensusSessionId, context.groupid, rankingValue);
-}
 
 /*********** MULTI FUNCTIONAL CALLS ***********/
 export async function getVotingRoundMultiAction(consensusSessionId: number) {
   const context: UserBeContext = await _createContext(consensusSessionId);
-  const remainingRankings = await getRemainingRankingsForSessionAction(context, consensusSessionId);
+  const remainingRankings = await _getRemainingRankingsForSessionAction(context, consensusSessionId);
 
   // when there are no more rankings to vote on
   // don't get current votes for ranking, since there will be none
@@ -654,13 +484,145 @@ export async function getVotingRoundMultiAction(consensusSessionId: number) {
   }
 
   /*********** PRIVATE ***********/
+  async function _checkAccessToken() {
+    const accessToken = cookies().get('privy-token');
+    if (!accessToken?.value) {
+      return null;
+    }
+    const verifiedClaims = await privy.verifyAuthToken(accessToken.value);
+    if (!verifiedClaims) {
+      return null;
+    } else {
+      return verifiedClaims;
+    }
+  }
+
+async function _isAuthorized() {
+  debug('_isAuthorized: checking BE auth');
+  const claims = await _checkAccessToken();
+  if (!claims) {
+    throw new Error('Not authorized');
+  }
+  const privyUserId = { value: claims?.userId };
+  const activeWalletAddress = cookies().get('activeWalletAddress');
+  const ipaddress = (headers().get('x-forwarded-for') ?? '127.0.0.1').split(',')[0];
+  if (activeWalletAddress?.value && (!privyUserId?.value || !ipaddress)) {
+    await logoutAction();
+  }
+  if (!ipaddress || !activeWalletAddress?.value || !privyUserId?.value) {
+    if (!ipaddress) {
+      throw new Error('no ip address found');
+    }
+    if (!activeWalletAddress?.value) {
+      throw new Error('no active wallet address found');
+    }
+    if (!privyUserId?.value) {
+      throw new Error('no privyUserId found');
+    }
+    redirect('/');
+  }
+  let session = await getBeUserSession(ipaddress, activeWalletAddress.value, privyUserId?.value || '');
+
+  if (!session || session.length === 0) {
+    // if their backend session is not found, but they are authorized, create a new session
+    // TODO check if the claim is expired
+    if (claims?.appId === process.env.NEXT_PUBLIC_PRIVY_APP_ID
+      && claims?.issuer === 'privy.io'
+      && activeWalletAddress?.value?.length > 8) {
+      const profile = await getUserProfileByWalletAddress(activeWalletAddress?.value);
+      let profileData: Partial<RespectUser> | null = null;
+      if (Array.isArray(profile) && profile.length > 0) {
+        profileData = profile[0] as RespectUser;
+      }
+      if (profileData?.walletaddress?.toLowerCase() === activeWalletAddress?.value.toLowerCase()) {
+        const renewalUser: any = {
+          wallet: {
+            address: activeWalletAddress?.value
+          }
+        };
+        debug(`renewing session for: ${profileData?.walletaddress}`);
+        await login(renewalUser);
+        session = await getBeUserSession(ipaddress, activeWalletAddress.value, privyUserId?.value || '');
+      }
+    } else {
+      // if no session is returned, make sure they are logged out fully.
+      await logoutAction();
+      throw new Error('logging out due to no session');
+    }
+  }
+  return session[0];
+}
+
+async function _isMemberOfSessionAction(consensusSessionId: number, beSession?: UserBeSessionsModel, isAdmin?: boolean): Promise<boolean> {
+  if (beSession?.walletaddress && typeof isAdmin === 'boolean') {
+    const isMember = await getFirstMatchingMemberOfSession(consensusSessionId, beSession.walletaddress);
+    return isAdmin || isMember?.length === 1;
+  }
+  const beSessionFresh = await _isAuthorized();
+  if (!beSessionFresh || !beSessionFresh.sessionid || !beSessionFresh.walletaddress) {
+    return false;
+  }
+  const isAdminFresh = await _isLoggedInUserAdmin(beSessionFresh);
+  const isMember = await getFirstMatchingMemberOfSession(consensusSessionId, beSessionFresh.walletaddress);
+  return isAdminFresh || isMember?.length === 1;
+}
+
+/**
+ * Caution - this method must remain private so it does not expose the userid
+ * @param user
+ */
+async function _createUserAccountIfNotExists(user: User): Promise<number | null> {
+  const address = user.wallet?.address;
+  let userId: number | null = null;
+  if (!address) {
+    return null;
+  }
+  const useridResp = await getUserIdByWalletAddress(address);
+  if (!useridResp || useridResp.length === 0) {
+    const createProfileResp = await createUserProfile(user);
+    if (createProfileResp && createProfileResp.length > 0 && typeof createProfileResp[0].id === 'number') {
+      userId = createProfileResp[0].id;
+    }
+  } else if (useridResp && useridResp.length > 0 && typeof useridResp[0].id === 'number') {
+    userId = useridResp[0].id;
+  }
+  return userId;
+}
+
+async function _isLoggedInUserAdmin(beSession: SelectUserBeSession): Promise<boolean> {
+  debug('isLoggedInUserAdmin: checking if user is admin');
+  const admins = process.env.RESPECT_GAME_ADMINS?.split(',') || [];
+  if (beSession && beSession.walletaddress) {
+    return admins?.some((addr) => addr.toLowerCase() === beSession.walletaddress?.toLowerCase());
+  }
+  return false;
+}
+
+async function _getCurrentVotesForSessionByRankingAction(context: UserBeContext, consensusSessionId: number, ranking: number) {
+  if (!context || !context.groupid) {
+    throw new Error('Not authorized');
+  }
+  return getCurrentVotesForSessionByRanking('walletaddress', consensusSessionId, context.groupid, ranking) as Promise<Vote[]>;
+}
+
+async function _getGroupMemberCountAction(context: UserBeContext) {
+  return context.groupMembers.length;
+}
+
+  async function _hasConsensusOnRankingAction(context: UserBeContext, consensusSessionId: number, rankingValue: number) {
+    if (rankingValue === 0) {
+      return false;
+    }
+    return _hasConsensusOnRanking(consensusSessionId, context.groupid, rankingValue);
+  }
+
   async function _createContext(consensusSessionId: number): Promise<UserBeContext> {
-    const beSession = await isAuthorized();
+    const beSession = await _isAuthorized();
     if (!beSession || !beSession.sessionid || !beSession.walletaddress || !beSession.userid) {
       throw new Error('Not authorized');
     }
     const isAdmin = await _isLoggedInUserAdmin(beSession);
-    const isMemberofSession = await isMemberOfSessionAction(consensusSessionId, beSession, isAdmin);
+    const isMemberofSession = await _isMemberOfSessionAction(consensusSessionId, beSession, isAdmin);
     if (!isAdmin && !isMemberofSession) {
       throw new Error('Not a member of session');
     }
@@ -682,3 +644,43 @@ export async function getVotingRoundMultiAction(consensusSessionId: number) {
       consensusSession: currentSessionResp[0] as ConsensusSessionDto
     };
   }
+
+async function _getRemainingRankingsForSessionAction(context: UserBeContext, consensusSessionId: number) {
+  if (!context || !context.consensusSession || !context.beSession?.userid) {
+    throw new Error('Not authorized');
+  }
+  // TODO make this work with other ranking schemes
+  const highestRanking = context.consensusSession?.rankinglimit || 6;
+  const rankingsWithConsensusResp = await getRankingsWithConsensusForSession(consensusSessionId, context.consensusSession?.sessionstatus, context.groupid);
+  // NO VOTES YET
+  // return list of all rankings, based on 'numeric-descending' if no rankings exist in db
+  if (!rankingsWithConsensusResp || rankingsWithConsensusResp.length === 0) {
+    return Array.from({ length: highestRanking }, (_, i) => i + 1).reverse();
+    // INCOMPLETE VOTES rankings and session has NOT finished
+  } else if (rankingsWithConsensusResp.length > 0
+    && context.consensusSession?.sessionstatus !== 2
+    && typeof rankingsWithConsensusResp[0].rankingvalue === 'number') {
+    const consensusReachedForCurrentRanking = await _hasConsensusOnRanking(consensusSessionId, context.groupid, rankingsWithConsensusResp[0].rankingvalue);
+    const existingRankings = rankingsWithConsensusResp.map((ranking) => ranking.rankingvalue) as number[];
+
+    let remainingRankings: number[];
+    // CONSENSUS NOT REACHED, include the current ranking in the list, but exclude those having consensus
+    if (!consensusReachedForCurrentRanking) {
+      remainingRankings = Array.from({ length: highestRanking }, (_, i) => i + 1).filter((ranking) => !existingRankings.includes(ranking)).reverse();
+      // CONSENSUS REACHED, exclude the current ranking from the list
+    } else {
+      remainingRankings = Array.from({ length: highestRanking }, (_, i) => i + 1).filter((ranking) => !existingRankings.includes(ranking)).reverse();
+    }
+    // if there are no more rankings to vote on, set the session status to finished, etc..
+    await _handleSessionUpdates(consensusSessionId,
+      context.consensusSession.sessionstatus,
+      context.groupid,
+      remainingRankings,
+      context.beSession.userid);
+    return remainingRankings;
+    // VOTING FINISHED, rankings will need to be verified then pushed onchain next
+  } else if (rankingsWithConsensusResp.length > 0 && context.consensusSession?.sessionstatus === 2) {
+    return [];
+  }
+}
+
