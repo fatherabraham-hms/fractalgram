@@ -1,5 +1,9 @@
 'use client';
-import { getConsensusSessionWinnersAction } from '@/app/actions';
+import {
+  getConsensusSessionWinnersAction,
+  markConsensusVotesAsSubmittedOnchainAction,
+  userCanSubmitOnchainProposalAction
+} from '@/app/actions';
 import { useEffect, useMemo, useState } from 'react';
 import { ConsensusWinnerModel } from '@/lib/models/consensus-winner.model';
 import { Button } from '@/components/ui/button';
@@ -7,6 +11,7 @@ import { Spinner } from '@chakra-ui/react';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import toast from 'react-hot-toast';
 import { useOrclient } from '@ordao/privy-react-orclient';
+import { ProposeRes } from '@ordao/orclient';
 
 
 export default function IndexPage({params}: { params: { sessionid: string };
@@ -15,6 +20,8 @@ export default function IndexPage({params}: { params: { sessionid: string };
     ConsensusWinnerModel[]
   >([]);
   const [isLoading, setLoading] = useState(true);
+  const [sessionid, setSessionid] = useState(0);
+  const [canSubmit, setCanSubmit] = useState(false);
   const {
     user,
   } = usePrivy();
@@ -30,14 +37,35 @@ export default function IndexPage({params}: { params: { sessionid: string };
   let warning = (
     <div className="flex items-center justify-center h-96">
       <h1 className="font-semibold text-lg md:text-2xl">
-        Looks like you're not a member of consensus session #{params?.sessionid}
+        Looks like you're not a member of consensus session #{sessionid}
         , sorry!
       </h1>
     </div>
   );
 
+  const pushOnChainButton = (
+    <Button
+      className="mt-4 w-50 bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded"
+      onClick={() => pushOnChain()}>
+      Push on chain!
+    </Button>
+  );
+
+  const pushOnchainCompleted = (
+    <div className="flex items-center justify-center h-96">
+      <h1 className="font-semibold text-lg md:text-2xl">
+        Consensus session #{sessionid} has been submitted on chain!
+      </h1>
+    </div>
+  );
+
   useEffect(() => {
-    getConsensusSessionWinnersAction(parseInt(params.sessionid)).then(
+    const sessionid = parseInt(params.sessionid);
+    if (isNaN(sessionid)) {
+      throw new Error('Invalid query parameter');
+    }
+    setSessionid(sessionid);
+    getConsensusSessionWinnersAction(sessionid).then(
       (winnersResp) => {
         if (winnersResp && winnersResp.length > 0) {
           const results = winnersResp as unknown as ConsensusWinnerModel[];
@@ -46,13 +74,18 @@ export default function IndexPage({params}: { params: { sessionid: string };
         }
       }
     );
+    userCanSubmitOnchainProposalAction(sessionid).then(
+      (canSubmitResp) => {
+        setCanSubmit(canSubmitResp);
+      }
+    );
   }, []);
 
   async function makeOrecProposal() {
     let toastid = toast.loading('Connecting to orclient..');
     if (orclient) {
       const rankings = consensusRankings.map((winner) => winner.walletaddress);
-      const rankedNames = consensusRankings.reduce<string>((prev, current, index) => {
+      const rankedNames = consensusRankings.reduce<string>((prev, current) => {
         return prev + `, ${current.name}`;
       }, "");
       toast.dismiss(toastid);
@@ -66,11 +99,15 @@ export default function IndexPage({params}: { params: { sessionid: string };
         // Metadata field is optional.
         metadata: {
           // Could use this to provide names for each rank
-          propTitle: `Session ${params.sessionid}`,
+          propTitle: `Session ${sessionid}`,
           propDescription: rankedNames
         }
-      }).then(() => {
+      }).then((resp: ProposeRes) => {
         toast.success('Proposal sent successfully!');
+        // set the consensus_status for this user's votes to pushed on chain
+        markConsensusVotesAsSubmittedOnchainAction(
+          resp.proposal,
+          sessionid).then();
       }).catch(() => {
         toast.error('Propose breakout failed');
       }).finally(() => {
@@ -109,11 +146,7 @@ export default function IndexPage({params}: { params: { sessionid: string };
             ))}
           </div>
           {
-            <Button
-              className="mt-4 w-50 bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded"
-              onClick={() => pushOnChain()}>
-              Push on chain!
-            </Button>
+            canSubmit ? pushOnChainButton : pushOnchainCompleted
           }
         </div>
       )}

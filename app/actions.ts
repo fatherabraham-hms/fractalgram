@@ -24,7 +24,12 @@ import {
   getConsensusSession,
   getConsensusWinnersRankingsAndWalletAddresses,
   getRecentSessionsForUserWalletAddress,
-  createPrivyMap, SelectUserBeSession
+  createPrivyMap,
+  SelectUserBeSession,
+  createOnchainProposalRecord,
+  setConsensusStatusForAllSessionIdRows,
+  getOnchainProposalsForSessionIdByStatus,
+  getSuccessfulProposalsForCurrentUser
 } from '@/lib/db';
 import { User } from '@privy-io/server-auth';
 import { PrivyClient, AuthTokenClaims } from '@privy-io/server-auth';
@@ -365,26 +370,13 @@ export async function getRemainingAttendeesForSessionAction(consensusSessionId: 
 }
 
 export async function getConsensusSessionWinnersAction(consensusSessionId: number) {
-  const beSession = await _isAuthorized();
-  if (!beSession || !beSession.sessionid || !beSession.walletaddress || !beSession.userid) {
-    throw new Error('Not authorized');
+  const context = await _createContext(consensusSessionId);
+  if (!context) {
+    throw new Error('Get User Context Failed');
   }
-  const isAdmin = await _isLoggedInUserAdmin(beSession);
-  const isMemberofSession = await _isMemberOfSessionAction(consensusSessionId);
-  if (!isAdmin && !isMemberofSession) {
-    throw new Error('Not a member of session');
-  }
-  const groupid = await getActiveGroupIdBySessionId(consensusSessionId);
-  if (!groupid || groupid.length === 0 || typeof groupid[0].groupid !== 'number') {
-    throw new Error('Not a member of group');
-  }
-  const currentConsensusStatus = await getConsensusSession(consensusSessionId);
-  if (!currentConsensusStatus || currentConsensusStatus.length === 0
-    || !currentConsensusStatus[0]?.sessionstatus) {
-    throw new Error('Consensus session found');
-  }
-  if (currentConsensusStatus[0].sessionstatus !== 2) {
-    throw new Error('Voting not finished');
+  const sessionHasConsensus = await _sessionHasConsensus(consensusSessionId);
+  if (!sessionHasConsensus) {
+    throw new Error('No consensus reached');
   }
   const finalConsensus = await getConsensusWinnersRankingsAndWalletAddresses(consensusSessionId);
   if (!finalConsensus || finalConsensus.length === 0) {
@@ -400,6 +392,82 @@ export async function getConsensusSessionWinnersAction(consensusSessionId: numbe
   });
 }
 
+/**
+ * Mark the consensus_status table rows as submitted on chain if conditions are met
+ * Check the session status and update to CHAIN_SUBMISSION_IN_PROGRESS (3)
+ * or CHAIN_SUBMISSION_COMPLETE (4) if more than 50% of the attendees have submitted
+ * @param proposalJson
+ * @param consensusSessionId
+ */
+export async function markConsensusVotesAsSubmittedOnchainAction(
+  proposalJson: unknown,
+  consensusSessionId: number) {
+  const context = await _createContext(consensusSessionId);
+  // validate that the request is allowed
+  if (!context) {
+    throw new Error('Get User Context Failed');
+  }
+  const sessionHasConsensus = await _sessionHasConsensus(consensusSessionId);
+  if (!sessionHasConsensus) {
+    throw new Error('No consensus reached');
+  }
+  // update the consensus status for all consensus attestations in the consensus_status table for the current user
+  if (!context?.beSession?.userid) {
+    throw new Error('No user found in BE Session');
+  }
+  await setConsensusStatusForAllSessionIdRows(consensusSessionId, 3, context?.beSession?.userid);
+
+  // insert the proposal data into the onchain proposals table since we have submitted successfully
+  // note status follows OnchainProposalStatusEnum
+  if (context?.consensusSession?.sessionid
+    && context?.beSession?.userid
+    && context?.consensusSession?.sessionid > 0
+    && context?.beSession?.userid > 0) {
+    await createOnchainProposalRecord(
+      context?.consensusSession?.sessionid,
+      proposalJson,
+      2,
+      context.beSession?.userid
+    )
+  }
+
+  /** Set the session status
+   * check how many of the session attendees have submitted on chain
+   * if more than 50% have submitted, set the session status to 3
+   */
+  const proposalsSubmittedResp = await getOnchainProposalsForSessionIdByStatus(consensusSessionId, 2);
+  const totalAttendees = context?.groupMembers?.length || 0;
+  const proposalsSubmitted = proposalsSubmittedResp?.length || 0;
+  // CHAIN_SUBMISSION_COMPLETE
+  if (proposalsSubmitted > totalAttendees / 2) {
+    await setSessionStatus(consensusSessionId, 4);
+  } else {
+    // CHAIN_SUBMISSION_IN_PROGRESS
+    await setSessionStatus(consensusSessionId, 3);
+  }
+}
+
+export async function userCanSubmitOnchainProposalAction(consensusSessionId: number) {
+  if (consensusSessionId) {
+    const context = await _createContext(consensusSessionId);
+    if (!context) {
+      debug('Get User Context Failed');
+      return false;
+    }
+    const sessionHasConsensus = await _sessionHasConsensus(consensusSessionId);
+    if (!sessionHasConsensus) {
+      debug('No consensus reached');
+      return false;
+    }
+    // check if the current user has already submitted,
+    // if they have not, allow the submission
+    if (context.beSession?.userid) {
+      const proposalsSubmittedResp = await getSuccessfulProposalsForCurrentUser(consensusSessionId, context.beSession?.userid);
+      return proposalsSubmittedResp?.length <= 0;
+    }
+  }
+  return false;
+}
 
 /*********** MULTI FUNCTIONAL CALLS ***********/
 export async function getVotingRoundMultiAction(consensusSessionId: number) {
@@ -479,6 +547,7 @@ export async function getVotingRoundMultiAction(consensusSessionId: number) {
           1,
           modifiedBy);
       }
+      // Set the session_status to CONSENSUS_REACHED
       await setSessionStatus(consensusSessionId, 2);
     }
   }
@@ -609,41 +678,41 @@ async function _getGroupMemberCountAction(context: UserBeContext) {
   return context.groupMembers.length;
 }
 
-  async function _hasConsensusOnRankingAction(context: UserBeContext, consensusSessionId: number, rankingValue: number) {
-    if (rankingValue === 0) {
-      return false;
-    }
-    return _hasConsensusOnRanking(consensusSessionId, context.groupid, rankingValue);
+async function _hasConsensusOnRankingAction(context: UserBeContext, consensusSessionId: number, rankingValue: number) {
+  if (rankingValue === 0) {
+    return false;
   }
+  return _hasConsensusOnRanking(consensusSessionId, context.groupid, rankingValue);
+}
 
-  async function _createContext(consensusSessionId: number): Promise<UserBeContext> {
-    const beSession = await _isAuthorized();
-    if (!beSession || !beSession.sessionid || !beSession.walletaddress || !beSession.userid) {
-      throw new Error('Not authorized');
-    }
-    const isAdmin = await _isLoggedInUserAdmin(beSession);
-    const isMemberofSession = await _isMemberOfSessionAction(consensusSessionId, beSession, isAdmin);
-    if (!isAdmin && !isMemberofSession) {
-      throw new Error('Not a member of session');
-    }
-    const groupid = await getActiveGroupIdBySessionId(consensusSessionId);
-    if (!groupid || groupid.length === 0 || typeof groupid[0].groupid !== 'number') {
-      throw new Error('Not a member of group');
-    }
-    const groupMembers = await getActiveGroupMembersByGroupId(groupid[0].groupid);
-    const currentSessionResp = await getConsensusSession(consensusSessionId);
-    if (!currentSessionResp || currentSessionResp.length === 0
-      || typeof currentSessionResp[0]?.sessionstatus !== 'number') {
-      throw new Error('No consensus session found');
-    }
-    return {
-      beSession: beSession,
-      isAdmin,
-      groupid: groupid[0].groupid,
-      groupMembers,
-      consensusSession: currentSessionResp[0] as ConsensusSessionDto
-    };
+async function _createContext(consensusSessionId: number): Promise<UserBeContext> {
+  const beSession = await _isAuthorized();
+  if (!beSession || !beSession.sessionid || !beSession.walletaddress || !beSession.userid) {
+    throw new Error('Not authorized');
   }
+  const isAdmin = await _isLoggedInUserAdmin(beSession);
+  const isMemberofSession = await _isMemberOfSessionAction(consensusSessionId, beSession, isAdmin);
+  if (!isAdmin && !isMemberofSession) {
+    throw new Error('Not a member of session');
+  }
+  const groupid = await getActiveGroupIdBySessionId(consensusSessionId);
+  if (!groupid || groupid.length === 0 || typeof groupid[0].groupid !== 'number') {
+    throw new Error('Not a member of group');
+  }
+  const groupMembers = await getActiveGroupMembersByGroupId(groupid[0].groupid);
+  const currentSessionResp = await getConsensusSession(consensusSessionId);
+  if (!currentSessionResp || currentSessionResp.length === 0
+    || typeof currentSessionResp[0]?.sessionstatus !== 'number') {
+    throw new Error('No consensus session not found');
+  }
+  return {
+    beSession: beSession,
+    isAdmin,
+    groupid: groupid[0].groupid,
+    groupMembers,
+    consensusSession: currentSessionResp[0] as ConsensusSessionDto
+  };
+}
 
 async function _getRemainingRankingsForSessionAction(context: UserBeContext, consensusSessionId: number) {
   if (!context || !context.consensusSession || !context.beSession?.userid) {
@@ -682,5 +751,18 @@ async function _getRemainingRankingsForSessionAction(context: UserBeContext, con
   } else if (rankingsWithConsensusResp.length > 0 && context.consensusSession?.sessionstatus === 2) {
     return [];
   }
+}
+
+async function _sessionHasConsensus(consensusSessionId: number) {
+  if (!consensusSessionId) {
+    return false;
+  }
+  const currentConsensusStatus = await getConsensusSession(consensusSessionId);
+  if (!currentConsensusStatus || currentConsensusStatus.length === 0
+    || !currentConsensusStatus[0]?.sessionstatus) {
+    debug('Consensus session not found');
+    return false;
+  }
+  return currentConsensusStatus[0].sessionstatus === 2;
 }
 
