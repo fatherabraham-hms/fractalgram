@@ -21,6 +21,7 @@ import { ConsensusVotesDto } from '@/lib/dtos/consensus-votes.dto';
 import { ConsensusStatusPgTable } from '@/lib/postgres_drizzle/consensus_status.orm';
 import { PrivyMapPgTable } from '@/lib/postgres_drizzle/privy_map.orm';
 import { User } from '@privy-io/server-auth';
+import { OnchainProposalsPgTable } from '@/lib/postgres_drizzle/onchain_proposals.orm';
 
 
 // ************** TABLES ****************** //
@@ -32,6 +33,7 @@ const consensusGroupMembers = ConsensusGroupsMembersPgTable;
 const consensusVotes = ConsensusVotesPgTable;
 const consensusStatus = ConsensusStatusPgTable;
 const privyMap = PrivyMapPgTable;
+const OnchainProposals = OnchainProposalsPgTable;
 
 // https://www.thisdot.co/blog/configure-your-project-with-drizzle-for-local-and-deployed-databases
 let db: | VercelPgDatabase<Record<string, never>>
@@ -72,14 +74,36 @@ export async function createPrivyMap(privyMapData: any, userId: number) {
 // ************** UserBeSessionPgTable ****************** //
 export type SelectUserBeSession = typeof userBeSessions.$inferSelect;
 
+const sessionCache = new Map<string, { data: SelectUserBeSession[], timestamp: number }>();
+function generateCacheKey(ipAddress: string, walletAddress: string, jwt: string): string {
+  return `${ipAddress}-${walletAddress}-${jwt}`;
+}
+/**
+ * Cache the session data for 1 hour
+ * This data gets hit constantly, so we need to cache it to avoid performance probs
+ * @param ipAddress
+ * @param walletAddress
+ * @param jwt
+ */
 export async function getBeUserSession(ipAddress: string, walletAddress: string, jwt: string): Promise<SelectUserBeSession[]> {
-  return db.select().from(userBeSessions)
+  const cacheKey = generateCacheKey(ipAddress, walletAddress, jwt);
+  const cacheEntry = sessionCache.get(cacheKey);
+  const oneHour = 1000 * 60 * 60;
+
+  if (cacheEntry && (Date.now() - cacheEntry.timestamp < oneHour)) {
+    return cacheEntry.data;
+  }
+
+  const session = await db.select().from(userBeSessions)
     .where(and(
       eq(userBeSessions.ipaddress, ipAddress),
       eq(userBeSessions.walletaddress, walletAddress),
       gt(userBeSessions.expires, new Date()),
       eq(userBeSessions.jwt, jwt)
     ));
+
+  sessionCache.set(cacheKey, { data: session, timestamp: Date.now() });
+  return session;
 }
 
 export async function createBeUserSession(session: any) {
@@ -518,7 +542,7 @@ export async function getRemainingVoteCandidatesForSession(consensusSessionId: n
     ))
     .where(where);
 
-  const { sql, params } = query.toSQL();
+  // const { sql, params } = query.toSQL();
   // console.log('SQL Query:', sql);
   // console.log('Parameters:', params);
   return query;
@@ -577,4 +601,63 @@ export async function getConsensusWinnersRankingsAndWalletAddresses(sessionid: n
     .groupBy(consensusStatus.votedfor, consensusStatus.rankingvalue, users.walletaddress, users.name)
     .orderBy(desc(consensusStatus.rankingvalue));
 }
+
+/**
+ * set consensus status for a sessionid
+ * one consensusid is assigned to each ranking attestation, so
+ * this function will update multiple records
+ * BE CAREFUL!!
+ *
+ * @param sessionid
+ * @param status
+ * @param modifiedById
+ */
+export async function setConsensusStatusForAllSessionIdRows(sessionid: number, status: number, modifiedById: number) {
+  return db.update(consensusStatus).set({
+    consensusstatus: status,
+    modifiedbyid: modifiedById,
+    updated: new Date()
+  }).where(eq(consensusStatus.sessionid, sessionid));
+}
+
+// ************** OnchainProposalsPgTable ****************** //
+
+export async function getOnchainProposalsForSessionIdByStatus(sessionid: number, onchainproposalstatus: number) {
+  return db.select({
+    proposalsubmissionid: OnchainProposals.proposalsubmissionid
+  }).from(OnchainProposals).where(
+    and(eq(OnchainProposals.sessionid, sessionid), eq(OnchainProposals.onchainproposalstatus, onchainproposalstatus))
+  );
+}
+
+export async function getSuccessfulProposalsForCurrentUser(sessionid: number, userid: number) {
+  return db.select({
+    proposalsubmissionid: OnchainProposals.proposalsubmissionid,
+    onchainproposalstatus: OnchainProposals.onchainproposalstatus
+  }).from(OnchainProposals)
+    .where(and(
+      eq(OnchainProposals.sessionid, sessionid),
+      eq(OnchainProposals.modifiedbyid, userid),
+      eq(OnchainProposals.onchainproposalstatus, 2)
+    ));
+}
+
+export async function setOnchainProposalStatus(sessionid: number, status: number) {
+  return db.update(OnchainProposals).set({
+    onchainproposalstatus: status
+  }).where(eq(OnchainProposals.sessionid, sessionid));
+}
+
+export async function createOnchainProposalRecord(sessionid: number, proposal: any, proposalStatus: number, modifiedById: number) {
+  return db.insert(OnchainProposals).values({
+    proposalsubmissionid: undefined,
+    proposaljson: proposal,
+    sessionid: sessionid,
+    onchainproposalstatus: proposalStatus,
+    modifiedbyid: modifiedById,
+    created: new Date(),
+    updated: new Date()
+  });
+}
+
 
