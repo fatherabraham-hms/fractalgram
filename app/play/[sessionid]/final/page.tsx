@@ -32,7 +32,7 @@ export default function IndexPage({params}: { params: { sessionid: string };
       return conWallets.wallets.find(w => w.address === wallet?.address);
     }
   }, [wallet]);
-  const orclient = useOrclient('op-sepolia', userWallet);
+  const orclient = useOrclient('of', userWallet);
 
   let warning = (
     <div className="flex items-center justify-center h-96">
