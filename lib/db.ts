@@ -548,7 +548,7 @@ export async function getRemainingVoteCandidatesForSession(consensusSessionId: n
   return query;
 }
 
-export async function getRankingsWithConsensusForSession(consensusSessionId: number, consensusSessionStatus: number, groupid: number) {
+export async function getRankingsWithConsensusForSession(consensusSessionId: number) {
   // console.log('getExistingRankingValuesForSession');
   return db.selectDistinct({
     rankingvalue: consensusStatus.rankingvalue
@@ -642,10 +642,14 @@ export async function getSuccessfulProposalsForCurrentUser(sessionid: number, us
     ));
 }
 
-export async function setOnchainProposalStatus(sessionid: number, status: number) {
+export async function setOnchainProposalStatusBySubmitterId(sessionid: number, status: number, modifiedById: number) {
   return db.update(OnchainProposals).set({
     onchainproposalstatus: status
-  }).where(eq(OnchainProposals.sessionid, sessionid));
+  }).where(
+    and(
+    eq(OnchainProposals.sessionid, sessionid),
+    eq(OnchainProposals.modifiedbyid, modifiedById)
+  ));
 }
 
 export async function createOnchainProposalRecord(sessionid: number, proposal: any, proposalStatus: number, modifiedById: number) {

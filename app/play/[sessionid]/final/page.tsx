@@ -1,7 +1,7 @@
 'use client';
 import {
   getConsensusSessionWinnersAction,
-  markConsensusVotesAsSubmittedOnchainAction,
+  markConsensusVotesAsSubmittedOnchainAction, setProposalSubmissionFailedAction,
   userCanSubmitOnchainProposalAction
 } from '@/app/actions';
 import { useEffect, useMemo, useState } from 'react';
@@ -110,12 +110,14 @@ export default function IndexPage({params}: { params: { sessionid: string };
           sessionid).then();
       }).catch(() => {
         toast.error('Propose breakout failed');
+        setProposalSubmissionFailedAction(sessionid, 1).then();
       }).finally(() => {
         toast.dismiss(toastid);
       });
     } else {
       toast.dismiss(toastid);
       toast.error('Could not connect to orclient');
+      await setProposalSubmissionFailedAction(sessionid, 3);
     }
   }
 

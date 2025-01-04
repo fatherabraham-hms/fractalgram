@@ -32,7 +32,6 @@
     "@vercel/analytics": "^1.4.0",
     "autoprefixer": "^10.4.20",
     "bs58": "4.0.1",
-    "bufferutil": "^4.0.8",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "drizzle-kit": "^0.21.4",
@@ -41,7 +40,7 @@
     "framer-motion": "^11.11.17",
     "js-cookie": "^3.0.5",
     "lucide-react": "^0.378.0",
-    "next": "14.2.10",
+    "next": "14.2.15",
     "next-auth": "5.0.0-beta.18",
     "next-client-cookies": "^1.1.1",
     "pino-pretty": "^11.3.0",
@@ -60,8 +59,7 @@
     "tailwindcss": "^3.4.15",
     "tailwindcss-animate": "^1.0.7",
     "ts-node": "^10.9.2",
-    "typescript": "5.4.5",
-    "ws": "^8.18.0"
+    "typescript": "5.4.5"
   },
   "prettier": {
     "arrowParens": "always",

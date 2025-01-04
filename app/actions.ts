@@ -29,7 +29,7 @@ import {
   createOnchainProposalRecord,
   setConsensusStatusForAllSessionIdRows,
   getOnchainProposalsForSessionIdByStatus,
-  getSuccessfulProposalsForCurrentUser
+  getSuccessfulProposalsForCurrentUser, setOnchainProposalStatusBySubmitterId
 } from '@/lib/db';
 import { User } from '@privy-io/server-auth';
 import { PrivyClient, AuthTokenClaims } from '@privy-io/server-auth';
@@ -469,6 +469,30 @@ export async function userCanSubmitOnchainProposalAction(consensusSessionId: num
   return false;
 }
 
+/**
+ * When proposal is submitted, but fails to be pushed on chain
+ * set the proposal status to SUBMISSION_FAILED (1)
+ * @param consensusSessionId
+ * @param proposalStatus
+ */
+export async function setProposalSubmissionFailedAction(consensusSessionId: number, proposalStatus: number) {
+  const context = await _createContext(consensusSessionId);
+  if (!context) {
+    throw new Error('Get User Context Failed');
+  }
+  const sessionHasConsensus = await _sessionHasConsensus(consensusSessionId);
+  if (!sessionHasConsensus) {
+    throw new Error('No consensus reached');
+  }
+  if (!context?.beSession?.userid) {
+    throw new Error('No user found in BE Session');
+  }
+  if (proposalStatus !== 1 && proposalStatus !== 3) {
+    throw new Error('Invalid proposal failed status');
+  }
+  await setOnchainProposalStatusBySubmitterId(consensusSessionId, proposalStatus, context.beSession?.userid);
+}
+
 /*********** MULTI FUNCTIONAL CALLS ***********/
 export async function getVotingRoundMultiAction(consensusSessionId: number) {
   const context: UserBeContext = await _createContext(consensusSessionId);
@@ -495,6 +519,7 @@ export async function getVotingRoundMultiAction(consensusSessionId: number) {
     }
   }
 
+/*********** PRIVATE ***********/
   async function _hasConsensusOnRanking(consensusSessionId: number, groupid: number, rankingValue: number): Promise<boolean> {
     const counts: {
       id: string,
@@ -552,7 +577,6 @@ export async function getVotingRoundMultiAction(consensusSessionId: number) {
     }
   }
 
-  /*********** PRIVATE ***********/
   async function _checkAccessToken() {
     const accessToken = cookies().get('privy-token');
     if (!accessToken?.value) {
@@ -720,7 +744,7 @@ async function _getRemainingRankingsForSessionAction(context: UserBeContext, con
   }
   // TODO make this work with other ranking schemes
   const highestRanking = context.consensusSession?.rankinglimit || 6;
-  const rankingsWithConsensusResp = await getRankingsWithConsensusForSession(consensusSessionId, context.consensusSession?.sessionstatus, context.groupid);
+  const rankingsWithConsensusResp = await getRankingsWithConsensusForSession(consensusSessionId);
   // NO VOTES YET
   // return list of all rankings, based on 'numeric-descending' if no rankings exist in db
   if (!rankingsWithConsensusResp || rankingsWithConsensusResp.length === 0) {
