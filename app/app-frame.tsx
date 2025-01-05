@@ -95,7 +95,13 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
               </Link>
               <UserPill />
             </header>
-            <Container maxW="6xl" py={10} px={4}>
+            <Container
+              maxW="10xl"
+              py={10}
+              px={4}
+              height="100vh"
+              width="100%"
+              backgroundImage="url('/static/images/cells-bg.jpg')">
               <Box
                 border="1px solid"
                 borderColor="gray.100"
