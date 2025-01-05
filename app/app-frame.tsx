@@ -109,6 +109,7 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
                 rounded="md"
                 boxShadow="lg"
                 overflow="hidden"
+                background="linear-gradient(to bottom, rgba(255, 255, 255, .75), rgba(255, 255, 255, 0))"
               >
                 {/*<Flex justifyContent="left" p={5}>*/}
                 {/*  <chakra.h3*/}
