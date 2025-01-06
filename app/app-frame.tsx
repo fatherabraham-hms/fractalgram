@@ -5,7 +5,7 @@ import { NavSidebar } from '@/components/app-shell/nav-sidebar';
 import { UserPill } from '@privy-io/react-auth/ui';
 import { useEffect, useState } from 'react';
 import * as React from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { usePrivy } from '@privy-io/react-auth';
 import { AuthContext, AuthContextType } from '../data/context/Contexts';
 import { getUserProfile, isLoggedInUserAdmin } from '@/app/actions';
@@ -13,6 +13,7 @@ import Cookies from 'js-cookie';
 
 export function AppFrame({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const currentRoute = usePathname();
   const { ready, authenticated, user } = usePrivy();
   const [loading, setLoading] = useState(true);
   const [isMounted, setIsMounted] = useState(false);
@@ -49,7 +50,7 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
     if (authContext?.isLoggedIn && authContext?.hasProfile) {
       setLoading(false);
     }
-  }, [ready, authenticated, router, authContext]);
+  }, [ready, authenticated, authContext]);
 
   if (!isMounted) {
     return null;
@@ -77,7 +78,7 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
       <AuthContext.Provider value={authContext}>
         <main className="flex flex-1 flex-col">
           <div
-            className={`grid min-h-screen w-full lg:grid-cols-[280px_1fr] ${!authContext.isLoggedIn ? 'hidden' : ''}`}>
+            className={`grid min-h-screen w-full lg:grid-cols-[280px_1fr] ${currentRoute === 'login' && !authContext.isLoggedIn ? 'hidden' : ''}`}>
             <div className="hidden border-r bg-gray-100/40 lg:block dark:bg-gray-800/40">
               <div className="flex h-full max-h-screen flex-col gap-2">
                 <div className="flex h-[60px] items-center border-b px-5">
@@ -124,7 +125,7 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
               </Container>
             </div>
           </div>
-          {!authContext.isLoggedIn ? <div>{children}</div> : ''}
+          {currentRoute === 'login' && !authContext.isLoggedIn ? <div>{children}</div> : ''}
         </main>
       </AuthContext.Provider>
     </ChakraProvider>
