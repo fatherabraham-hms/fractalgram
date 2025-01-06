@@ -13,5 +13,5 @@ export const ConsensusVotesPgTable = pgTable('consensus_votes', {
   rankingvalue: smallint('rankingvalue'),
   modifiedbyid: integer('modifiedbyid').references(() => UsersPgTable.id),
   created: timestamp('created', { mode: 'date'}),
-  updated: timestamp('updated', { mode: 'date' }).notNull().default(new Date()),
+  updated: timestamp('updated', { mode: 'date' }).notNull().default(sql`now()`),
 });

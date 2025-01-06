@@ -1,5 +1,9 @@
 'use client';
-import { getConsensusSessionWinnersAction } from '@/app/actions';
+import {
+  getConsensusSessionWinnersAction,
+  markConsensusVotesAsSubmittedOnchainAction, setProposalSubmissionFailedAction,
+  userCanSubmitOnchainProposalAction
+} from '@/app/actions';
 import { useEffect, useMemo, useState } from 'react';
 import { ConsensusWinnerModel } from '@/lib/models/consensus-winner.model';
 import { Progress } from "@chakra-ui/react";
@@ -8,6 +12,7 @@ import toast from 'react-hot-toast';
 import { useOrclient } from '@ordao/privy-react-orclient';
 import * as React from "react";
 import FunButton from "@/components/ui/fun-button";
+import { ProposeRes } from '@ordao/orclient';
 
 
 export default function IndexPage({params}: { params: { sessionid: string };
@@ -16,6 +21,8 @@ export default function IndexPage({params}: { params: { sessionid: string };
     ConsensusWinnerModel[]
   >([]);
   const [isLoading, setLoading] = useState(true);
+  const [sessionid, setSessionid] = useState(0);
+  const [canSubmit, setCanSubmit] = useState(false);
   const {
     user,
   } = usePrivy();
@@ -31,14 +38,35 @@ export default function IndexPage({params}: { params: { sessionid: string };
   let warning = (
     <div className="flex items-center justify-center h-96">
       <h1 className="font-semibold text-lg md:text-2xl">
-        Looks like you're not a member of consensus session #{params?.sessionid}
+        Looks like you're not a member of consensus session #{sessionid}
         , sorry!
       </h1>
     </div>
   );
 
+  const pushOnChainButton = (
+    <FunButton
+      className="mt-4 w-50 bg-violet-600 hover:bg-violet-700 text-white font-bold py-2 px-4 rounded"
+      onClick={() => pushOnChain()}>
+      Push on chain!
+    </FunButton>
+  );
+
+  const pushOnchainCompleted = (
+    <div className="flex items-center justify-center h-96">
+      <h1 className="font-semibold text-lg md:text-2xl">
+        Consensus session #{sessionid} has been submitted on chain!
+      </h1>
+    </div>
+  );
+
   useEffect(() => {
-    getConsensusSessionWinnersAction(parseInt(params.sessionid)).then(
+    const sessionid = parseInt(params.sessionid);
+    if (isNaN(sessionid)) {
+      throw new Error('Invalid query parameter');
+    }
+    setSessionid(sessionid);
+    getConsensusSessionWinnersAction(sessionid).then(
       (winnersResp) => {
         if (winnersResp && winnersResp.length > 0) {
           const results = winnersResp as unknown as ConsensusWinnerModel[];
@@ -47,13 +75,18 @@ export default function IndexPage({params}: { params: { sessionid: string };
         }
       }
     );
+    userCanSubmitOnchainProposalAction(sessionid).then(
+      (canSubmitResp) => {
+        setCanSubmit(canSubmitResp);
+      }
+    );
   }, []);
 
   async function makeOrecProposal() {
     let toastid = toast.loading('Connecting to orclient..');
     if (orclient) {
       const rankings = consensusRankings.map((winner) => winner.walletaddress);
-      const rankedNames = consensusRankings.reduce<string>((prev, current, index) => {
+      const rankedNames = consensusRankings.reduce<string>((prev, current) => {
         return prev + `, ${current.name}`;
       }, "");
       toast.dismiss(toastid);
@@ -67,19 +100,25 @@ export default function IndexPage({params}: { params: { sessionid: string };
         // Metadata field is optional.
         metadata: {
           // Could use this to provide names for each rank
-          propTitle: `Session ${params.sessionid}`,
+          propTitle: `Session ${sessionid}`,
           propDescription: rankedNames
         }
-      }).then(() => {
+      }).then((resp: ProposeRes) => {
         toast.success('Proposal sent successfully!');
+        // set the consensus_status for this user's votes to pushed on chain
+        markConsensusVotesAsSubmittedOnchainAction(
+          resp.proposal,
+          sessionid).then();
       }).catch(() => {
         toast.error('Propose breakout failed');
+        setProposalSubmissionFailedAction(sessionid, 1).then();
       }).finally(() => {
         toast.dismiss(toastid);
       });
     } else {
       toast.dismiss(toastid);
       toast.error('Could not connect to orclient');
+      await setProposalSubmissionFailedAction(sessionid, 3);
     }
   }
 
@@ -109,11 +148,7 @@ export default function IndexPage({params}: { params: { sessionid: string };
             ))}
           </div>
           {
-            <FunButton
-              className="mt-4 w-50 bg-violet-600 hover:bg-violet-700 text-white font-bold py-2 px-4 rounded"
-              onClick={() => pushOnChain()}>
-              Push on chain!
-            </FunButton>
+            canSubmit ? pushOnChainButton : pushOnchainCompleted
           }
         </div>
       )}

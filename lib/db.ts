@@ -21,6 +21,7 @@ import { ConsensusVotesDto } from '@/lib/dtos/consensus-votes.dto';
 import { ConsensusStatusPgTable } from '@/lib/postgres_drizzle/consensus_status.orm';
 import { PrivyMapPgTable } from '@/lib/postgres_drizzle/privy_map.orm';
 import { User } from '@privy-io/server-auth';
+import { OnchainProposalsPgTable } from '@/lib/postgres_drizzle/onchain_proposals.orm';
 
 
 // ************** TABLES ****************** //
@@ -32,6 +33,7 @@ const consensusGroupMembers = ConsensusGroupsMembersPgTable;
 const consensusVotes = ConsensusVotesPgTable;
 const consensusStatus = ConsensusStatusPgTable;
 const privyMap = PrivyMapPgTable;
+const OnchainProposals = OnchainProposalsPgTable;
 
 // https://www.thisdot.co/blog/configure-your-project-with-drizzle-for-local-and-deployed-databases
 let db: | VercelPgDatabase<Record<string, never>>
@@ -93,12 +95,12 @@ export async function getBeUserSession(ipAddress: string, walletAddress: string,
   }
 
   const session = await db.select().from(userBeSessions)
-                          .where(and(
-                            eq(userBeSessions.ipaddress, ipAddress),
-                            eq(userBeSessions.walletaddress, walletAddress),
-                            gt(userBeSessions.expires, new Date()),
-                            eq(userBeSessions.jwt, jwt)
-                          ));
+    .where(and(
+      eq(userBeSessions.ipaddress, ipAddress),
+      eq(userBeSessions.walletaddress, walletAddress),
+      gt(userBeSessions.expires, new Date()),
+      eq(userBeSessions.jwt, jwt)
+    ));
 
   sessionCache.set(cacheKey, { data: session, timestamp: Date.now() });
   return session;
@@ -540,13 +542,13 @@ export async function getRemainingVoteCandidatesForSession(consensusSessionId: n
     ))
     .where(where);
 
-  const { sql, params } = query.toSQL();
+  // const { sql, params } = query.toSQL();
   // console.log('SQL Query:', sql);
   // console.log('Parameters:', params);
   return query;
 }
 
-export async function getRankingsWithConsensusForSession(consensusSessionId: number, consensusSessionStatus: number, groupid: number) {
+export async function getRankingsWithConsensusForSession(consensusSessionId: number) {
   // console.log('getExistingRankingValuesForSession');
   return db.selectDistinct({
     rankingvalue: consensusStatus.rankingvalue
@@ -599,4 +601,67 @@ export async function getConsensusWinnersRankingsAndWalletAddresses(sessionid: n
     .groupBy(consensusStatus.votedfor, consensusStatus.rankingvalue, users.walletaddress, users.name)
     .orderBy(desc(consensusStatus.rankingvalue));
 }
+
+/**
+ * set consensus status for a sessionid
+ * one consensusid is assigned to each ranking attestation, so
+ * this function will update multiple records
+ * BE CAREFUL!!
+ *
+ * @param sessionid
+ * @param status
+ * @param modifiedById
+ */
+export async function setConsensusStatusForAllSessionIdRows(sessionid: number, status: number, modifiedById: number) {
+  return db.update(consensusStatus).set({
+    consensusstatus: status,
+    modifiedbyid: modifiedById,
+    updated: new Date()
+  }).where(eq(consensusStatus.sessionid, sessionid));
+}
+
+// ************** OnchainProposalsPgTable ****************** //
+
+export async function getOnchainProposalsForSessionIdByStatus(sessionid: number, onchainproposalstatus: number) {
+  return db.select({
+    proposalsubmissionid: OnchainProposals.proposalsubmissionid
+  }).from(OnchainProposals).where(
+    and(eq(OnchainProposals.sessionid, sessionid), eq(OnchainProposals.onchainproposalstatus, onchainproposalstatus))
+  );
+}
+
+export async function getSuccessfulProposalsForCurrentUser(sessionid: number, userid: number) {
+  return db.select({
+    proposalsubmissionid: OnchainProposals.proposalsubmissionid,
+    onchainproposalstatus: OnchainProposals.onchainproposalstatus
+  }).from(OnchainProposals)
+    .where(and(
+      eq(OnchainProposals.sessionid, sessionid),
+      eq(OnchainProposals.modifiedbyid, userid),
+      eq(OnchainProposals.onchainproposalstatus, 2)
+    ));
+}
+
+export async function setOnchainProposalStatusBySubmitterId(sessionid: number, status: number, modifiedById: number) {
+  return db.update(OnchainProposals).set({
+    onchainproposalstatus: status
+  }).where(
+    and(
+    eq(OnchainProposals.sessionid, sessionid),
+    eq(OnchainProposals.modifiedbyid, modifiedById)
+  ));
+}
+
+export async function createOnchainProposalRecord(sessionid: number, proposal: any, proposalStatus: number, modifiedById: number) {
+  return db.insert(OnchainProposals).values({
+    proposalsubmissionid: undefined,
+    proposaljson: proposal,
+    sessionid: sessionid,
+    onchainproposalstatus: proposalStatus,
+    modifiedbyid: modifiedById,
+    created: new Date(),
+    updated: new Date()
+  });
+}
+
 
