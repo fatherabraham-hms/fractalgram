@@ -311,10 +311,6 @@ export async function createConsensusSessionAndUserGroupAction(groupAddresses: s
   if (Object?.keys(session)?.length === 0) {
     throw new Error('Session is empty');
   }
-  const isAdmin = await isLoggedInUserAdmin();
-  if (!isAdmin) {
-    throw new Error('Not allowed to create session');
-  }
   const activeAdminWalletAddress = cookies().get('activeWalletAddress');
   if (!activeAdminWalletAddress?.value) {
     throw new Error('No active wallet address');
