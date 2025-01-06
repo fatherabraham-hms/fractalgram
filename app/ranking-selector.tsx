@@ -17,7 +17,14 @@ import toast from 'react-hot-toast';
 import { useRouter } from 'next/navigation';
 import { VOTING_ROUND_POLLING_INTERVAL } from '../data/constants/app_constants';
 import * as React from 'react';
-import { Box, chakra, Container, Divider, Progress } from '@chakra-ui/react';
+import {
+  Box,
+  chakra,
+  Container,
+  Progress,
+  Radio,
+  RadioGroup
+} from '@chakra-ui/react';
 import { AuthContext } from '../data/context/Contexts';
 
 // TODO: https://tailwindcomponents.com/component/radio-buttons
@@ -188,14 +195,16 @@ export function RankingSelector({
   // <pre>Rankings: { JSON.stringify(rankings[currentRankNumber], null, 2) }</pre>
 
   return (
-    <Container maxW="6xl" py={10} px={4}>
+    <Container maxW="6xl" py={2} px={4} marginBottom={14}>
       <Box
         border="1px solid"
         borderColor="gray.100"
-        padding={5}
+        padding={4}
+        marginBottom={4}
         rounded="md"
-        boxShadow="lg"
+        boxShadow="sm"
         overflow="hidden"
+        background="linear-gradient(to bottom, rgba(255, 255, 255, .25), rgba(255, 255, 255, 0))"
       >
         <chakra.h3
           fontSize="xl"
@@ -205,39 +214,41 @@ export function RankingSelector({
         >
           Voting Level: {currentRankNumber}
         </chakra.h3>
-        <chakra.h4
-          fontSize="md"
+        <chakra.h5
+          fontSize="sm"
           fontWeight="bold"
           textAlign="center"
           color="gray.600"
         >
           {totalCount} Votes cast by {groupCount} Attendees
-        </chakra.h4>
-
-        <Divider />
-        {consensusReached && authContext?.isAdmin && (
-          <Alert
-            message={'You have successfully reached consensus on this topic!'}
-            variant={'success'}
-            callback={nextLevel}
-          />
-        )}
-        {consensusReached && !authContext?.isAdmin && (
-          <Alert
-            message={'You have successfully reached consensus on this topic!'}
-            variant={'success'}
-          />
-        )}
+        </chakra.h5>
+      </Box>
+      {consensusReached && authContext?.isAdmin && (
+        <Alert
+          message={'You have successfully reached consensus on this topic!'}
+          variant={'success'}
+          callback={nextLevel}
+        />
+      )}
+      {consensusReached && !authContext?.isAdmin && (
+        <Alert
+          message={'You have successfully reached consensus on this topic!'}
+          variant={'success'}
+        />
+      )}
+      <form className="border shadow-md rounded-lg">
         {loading && <Progress size="xs" isIndeterminate colorScheme={'cyan'} />}
-        <form className="border shadow-sm rounded-lg">
+        <RadioGroup
+          name={'ranking'}
+          onChange={() => setHasClickedRadionButton(true)}
+        >
           {rankingConfig &&
             rankingConfig?.attendees?.length > 0 &&
             rankingConfig?.attendees?.map((user: RespectUser) => (
               <div key={user.walletaddress} className={'flex items-center'}>
                 <div className={'flex-grow-0 p-4'}>
-                  <input
-                    type={'radio'}
-                    name={'rankings'}
+                  <Radio
+                    colorScheme={'cyan'}
                     value={user?.walletaddress}
                     onChange={() => setRanking(user.walletaddress, 'upvote')}
                   />
@@ -271,7 +282,7 @@ export function RankingSelector({
                           style={{
                             width: `${calculateRankingPercentageForCandidate(user)}%`
                           }}
-                          className={`flex flex-col justify-center rounded-full overflow-hidden bg-blue-600 text-xs text-white text-center whitespace-nowrap transition duration-500 dark:bg-blue-500`}
+                          className={`flex flex-col justify-center rounded-full overflow-hidden bg-[#55BADC] text-xs text-white text-center whitespace-nowrap transition duration-500 dark:bg-blue-500`}
                         ></div>
                       </div>
                     </div>
@@ -279,8 +290,8 @@ export function RankingSelector({
                 </div>
               </div>
             ))}
-        </form>
-      </Box>
+        </RadioGroup>
+      </form>
     </Container>
   );
 }

@@ -565,9 +565,10 @@ export async function getVotingRoundMultiAction(consensusSessionId: number) {
         if (!lastAttendee || lastAttendee.length === 0 || typeof lastAttendee[0].id !== 'number') {
           throw new Error('No last attendee found');
         }
+        // take the second highest ranking, since the highest ranking is already set
         await setSingleRankingConsensus(
           consensusSessionId,
-          remainingRankings[0],
+          remainingRankings[1],
           lastAttendee[0].id,
           1,
           modifiedBy);

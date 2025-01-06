@@ -6,11 +6,12 @@ import {
 } from '@/app/actions';
 import { useEffect, useMemo, useState } from 'react';
 import { ConsensusWinnerModel } from '@/lib/models/consensus-winner.model';
-import { Button } from '@/components/ui/button';
-import { Spinner } from '@chakra-ui/react';
+import { Progress } from "@chakra-ui/react";
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import toast from 'react-hot-toast';
 import { useOrclient } from '@ordao/privy-react-orclient';
+import * as React from "react";
+import FunButton from "@/components/ui/fun-button";
 import { ProposeRes } from '@ordao/orclient';
 
 
@@ -44,11 +45,11 @@ export default function IndexPage({params}: { params: { sessionid: string };
   );
 
   const pushOnChainButton = (
-    <Button
-      className="mt-4 w-50 bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded"
+    <FunButton
+      className="mt-4 w-50 bg-violet-600 hover:bg-violet-700 text-white font-bold py-2 px-4 rounded"
       onClick={() => pushOnChain()}>
       Push on chain!
-    </Button>
+    </FunButton>
   );
 
   const pushOnchainCompleted = (
@@ -130,9 +131,8 @@ export default function IndexPage({params}: { params: { sessionid: string };
       <div className="flex items-center mb-8">
         <h1 className="font-semibold text-lg md:text-2xl">Final Consensus</h1>
       </div>
-      {(isLoading && <Spinner m={10} />) || (
-        <div className="flex flex-col items-center">
-          <h1 className="font-semibold text-lg md:text-2xl">Rankings</h1>
+      {(isLoading && <Progress size="xs" isIndeterminate colorScheme={'cyan'} />) || (
+        <div className="flex flex-col">
           <div className="flex flex-col">
             {consensusRankings.map((winner) => (
               <div key={winner.walletaddress} className="flex-col">

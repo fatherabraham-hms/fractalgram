@@ -16,9 +16,9 @@ import { createConsensusSessionAndUserGroupAction, getUsers } from '@/app/action
 import toast from 'react-hot-toast';
 import { Spinner } from '@/components/icons';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@chakra-ui/react';
 import { SESSION_POLLING_INTERVAL } from '../data/constants/app_constants';
 import { RiCheckboxCircleFill } from 'react-icons/ri';
+import FunButton from "@/components/ui/fun-button";
 
 
 export function UsersTable() {
@@ -59,14 +59,16 @@ export function UsersTable() {
 
   return (
     <>
-      {(
-        <Button
+      {
+        <FunButton
           disabled={groupAddresses?.length <= 1}
-          onClick={() => createSessionHandler()}>
+          onClick={() => createSessionHandler()}
+        >
           Create Session ({groupAddresses?.length || 0})
-        </Button>
-      )}
-      <br/>
+        </FunButton>
+      }
+      <br />
+      <br />
       <form className="border shadow-sm rounded-lg">
         <Table>
           <TableHeader>
@@ -74,15 +76,21 @@ export function UsersTable() {
               <TableHead className="max-w-[50px]"></TableHead>
               <TableHead className="max-w-[150px]">Name</TableHead>
               <TableHead className="hidden md:table-cell">Email</TableHead>
-              <TableHead className="hidden md:table-cell">Wallet Address</TableHead>
+              <TableHead className="hidden md:table-cell">
+                Wallet Address
+              </TableHead>
               <TableHead className="hidden md:table-cell">Username</TableHead>
-              <TableHead className="hidden md:table-cell">Logged In</TableHead>
+              <TableHead className="hidden md:table-cell">Available</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {users?.map((user: any) => (
-              <UserRow key={user.walletaddress} user={user} groupAddresses={groupAddresses}
-                       setGroupAddresses={setGroupAddresses} />
+              <UserRow
+                key={user.walletaddress}
+                user={user}
+                groupAddresses={groupAddresses}
+                setGroupAddresses={setGroupAddresses}
+              />
             ))}
           </TableBody>
         </Table>

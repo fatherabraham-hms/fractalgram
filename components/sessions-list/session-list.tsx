@@ -7,7 +7,7 @@ import {
   Tbody,
   Tr,
   Td,
-  TableContainer, Spinner
+  TableContainer, Progress
 } from '@chakra-ui/react';
 import { Link } from '@chakra-ui/next-js';
 import { getSessionStatusLabel } from '@/lib/utils';
@@ -58,7 +58,7 @@ export function SessionList() {
   }
 
   if (!showContent()) {
-    return <Spinner m={10} />
+    return <Progress size="xs" isIndeterminate colorScheme={'cyan'} />;
   }
 
   if (!isLoading && recentSessions && recentSessions?.length === 0) {
@@ -71,13 +71,6 @@ export function SessionList() {
   return (
       <TableContainer>
         <Table colorScheme="gray" size="sm">
-          {/*<Thead>*/}
-          {/*  <Tr>*/}
-          {/*    <Th>Session Number</Th>*/}
-          {/*    <Th>Status</Th>*/}
-          {/*    <Th>Created</Th>*/}
-          {/*  </Tr>*/}
-          {/*</Thead>*/}
           <Tbody>
             {recentSessions.map((session) => (
               <Tr key={session.sessionid}>
