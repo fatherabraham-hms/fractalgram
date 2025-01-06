@@ -417,6 +417,8 @@ export async function markConsensusVotesAsSubmittedOnchainAction(
   }
   await setConsensusStatusForAllSessionIdRows(consensusSessionId, 3, context?.beSession?.userid);
 
+  // TODO - for some reason this insert is not working, but not throwing an error
+
   // insert the proposal data into the onchain proposals table since we have submitted successfully
   // note status follows OnchainProposalStatusEnum
   if (context?.consensusSession?.sessionid
@@ -568,7 +570,7 @@ export async function getVotingRoundMultiAction(consensusSessionId: number) {
         // take the second highest ranking, since the highest ranking is already set
         await setSingleRankingConsensus(
           consensusSessionId,
-          remainingRankings[1],
+          remainingRankings[0],
           lastAttendee[0].id,
           1,
           modifiedBy);
@@ -760,7 +762,7 @@ async function _getRemainingRankingsForSessionAction(context: UserBeContext, con
     let remainingRankings: number[];
     // CONSENSUS NOT REACHED, include the current ranking in the list, but exclude those having consensus
     if (!consensusReachedForCurrentRanking) {
-      remainingRankings = Array.from({ length: highestRanking }, (_, i) => i + 1).filter((ranking) => !existingRankings.includes(ranking)).reverse();
+      remainingRankings = Array.from({ length: highestRanking }, (_, i) => i + 1).filter((ranking) => existingRankings.includes(ranking)).reverse();
       // CONSENSUS REACHED, exclude the current ranking from the list
     } else {
       remainingRankings = Array.from({ length: highestRanking }, (_, i) => i + 1).filter((ranking) => !existingRankings.includes(ranking)).reverse();

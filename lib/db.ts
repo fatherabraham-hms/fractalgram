@@ -90,7 +90,7 @@ export async function getBeUserSession(ipAddress: string, walletAddress: string,
   const cacheEntry = sessionCache.get(cacheKey);
   const oneHour = 1000 * 60 * 60;
 
-  if (cacheEntry && (Date.now() - cacheEntry.timestamp < oneHour)) {
+  if (cacheEntry && cacheEntry.data && cacheEntry.data.length > 0 && (Date.now() - cacheEntry.timestamp < oneHour)) {
     return cacheEntry.data;
   }
 
@@ -102,6 +102,9 @@ export async function getBeUserSession(ipAddress: string, walletAddress: string,
       eq(userBeSessions.jwt, jwt)
     ));
 
+  if (!session || session.length === 0) {
+    return [];
+  }
   sessionCache.set(cacheKey, { data: session, timestamp: Date.now() });
   return session;
 }

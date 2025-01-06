@@ -108,7 +108,12 @@ export default function IndexPage({params}: { params: { sessionid: string };
         // set the consensus_status for this user's votes to pushed on chain
         markConsensusVotesAsSubmittedOnchainAction(
           resp.proposal,
-          sessionid).then();
+          sessionid).then(() => {
+          userCanSubmitOnchainProposalAction(sessionid).then(
+            (canSubmitResp) => {
+              setCanSubmit(canSubmitResp);
+            });
+        });
       }).catch(() => {
         toast.error('Propose breakout failed');
         setProposalSubmissionFailedAction(sessionid, 1).then();
