@@ -72,14 +72,36 @@ export async function createPrivyMap(privyMapData: any, userId: number) {
 // ************** UserBeSessionPgTable ****************** //
 export type SelectUserBeSession = typeof userBeSessions.$inferSelect;
 
+const sessionCache = new Map<string, { data: SelectUserBeSession[], timestamp: number }>();
+function generateCacheKey(ipAddress: string, walletAddress: string, jwt: string): string {
+  return `${ipAddress}-${walletAddress}-${jwt}`;
+}
+/**
+ * Cache the session data for 1 hour
+ * This data gets hit constantly, so we need to cache it to avoid performance probs
+ * @param ipAddress
+ * @param walletAddress
+ * @param jwt
+ */
 export async function getBeUserSession(ipAddress: string, walletAddress: string, jwt: string): Promise<SelectUserBeSession[]> {
-  return db.select().from(userBeSessions)
-    .where(and(
-      eq(userBeSessions.ipaddress, ipAddress),
-      eq(userBeSessions.walletaddress, walletAddress),
-      gt(userBeSessions.expires, new Date()),
-      eq(userBeSessions.jwt, jwt)
-    ));
+  const cacheKey = generateCacheKey(ipAddress, walletAddress, jwt);
+  const cacheEntry = sessionCache.get(cacheKey);
+  const oneHour = 1000 * 60 * 60;
+
+  if (cacheEntry && (Date.now() - cacheEntry.timestamp < oneHour)) {
+    return cacheEntry.data;
+  }
+
+  const session = await db.select().from(userBeSessions)
+                          .where(and(
+                            eq(userBeSessions.ipaddress, ipAddress),
+                            eq(userBeSessions.walletaddress, walletAddress),
+                            gt(userBeSessions.expires, new Date()),
+                            eq(userBeSessions.jwt, jwt)
+                          ));
+
+  sessionCache.set(cacheKey, { data: session, timestamp: Date.now() });
+  return session;
 }
 
 export async function createBeUserSession(session: any) {

@@ -4,11 +4,11 @@ const ContentSecurityPolicy = `
   default-src 'self' *.privy.io va.vercel-scripts.com;
   script-src 'self' 'unsafe-eval' 'unsafe-inline' *.privy.io va.vercel-scripts.com;
   child-src 'self' *.privy.io *.walletconnect.com;
-  style-src 'self' 'unsafe-inline';
+  style-src 'self' 'unsafe-inline' fonts.googleapis.com;
   img-src 'self' blob: data: localhost:3000 explorer-api.walletconnect.com;
   media-src 'self' *.s3.amazonaws.com *.privy.io;
   connect-src *;
-  font-src 'self' *.privy.io;
+  font-src 'self' *.privy.io fonts.gstatic.com;
   worker-src * blob: ws: *.privy.io;
 `
 
