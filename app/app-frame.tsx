@@ -21,7 +21,8 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
     isFirstAuthContextInit: true,
     isAdmin: false,
     isLoggedIn: false,
-    hasProfile: false
+    hasProfile: false,
+    walletAddress: ''
   });
 
   const theme = extendTheme({
@@ -66,7 +67,8 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
           isFirstAuthContextInit: false,
           isAdmin,
           isLoggedIn: authenticated,
-          hasProfile: profile?.name !== '' && profile?.username !== ''
+          hasProfile: profile !== null && profile?.name !== '' && profile?.username !== '',
+          walletAddress: user?.wallet?.address
         });
         setLoading(false);
       });

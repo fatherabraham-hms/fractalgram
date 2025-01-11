@@ -3,7 +3,7 @@ import { NavItem } from '@/app/nav-item';
 import { UsersIcon } from '@/components/icons';
 import { useContext } from 'react';
 import { AuthContext } from '../../data/context/Contexts';
-import { StarIcon } from 'lucide-react';
+import { PencilIcon, StarIcon } from "lucide-react";
 
 export function NavSidebar() {
   const authContext = useContext(AuthContext);
@@ -22,6 +22,10 @@ export function NavSidebar() {
       {
         authContext?.isAdmin ? groups : ''
       }
+      <NavItem href="/profile">
+        <PencilIcon className="h-4 w-4" />
+        My Profile
+      </NavItem>
       {/*<NavItem href="/settings">*/}
       {/*  <SettingsIcon className="h-4 w-4" />*/}
       {/*  Settings*/}

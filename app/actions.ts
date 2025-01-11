@@ -267,7 +267,7 @@ export async function updateUserProfileAction(user: Partial<RespectUser>): Promi
 }> {
   await checkAccessToken();
   const result = await updateUserProfile(user);
-  return result as Partial<RespectUser> | { message: string };
+  return result as Partial<RespectUser>;
 }
 
 // TODO - set up hats protocol
