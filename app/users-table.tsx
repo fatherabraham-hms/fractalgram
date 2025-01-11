@@ -8,21 +8,19 @@ import {
   TableBody,
   Table
 } from '@/components/ui/table';
-
-import { useRouter } from 'next/navigation';
 import { RespectUser } from '@/lib/dtos/respect-user.dto';
 import { useEffect, useState } from 'react';
-import { createConsensusSessionAndUserGroupAction, getUsers } from '@/app/actions';
+import { getUsers } from '@/app/actions';
 import toast from 'react-hot-toast';
-import { Spinner } from '@/components/icons';
 import { Badge } from '@/components/ui/badge';
 import { SESSION_POLLING_INTERVAL } from '../data/constants/app_constants';
 import { RiCheckboxCircleFill } from 'react-icons/ri';
-import FunButton from "@/components/ui/fun-button";
+import { SessionCreator } from "@/components/session-creator/session-creator";
+import { Progress } from "@chakra-ui/react";
+import * as React from "react";
 
 
 export function UsersTable() {
-  const router = useRouter();
   const [users, setUsers] = useState<Partial<RespectUser[]>>([]);
   const [query, setQuery] = useState('');
   const [groupAddresses, setGroupAddresses] = useState<string[]>([]);
@@ -44,32 +42,17 @@ export function UsersTable() {
     return () => clearInterval(interval);
   }, [query, offset]);
 
-  function createSessionHandler() {
-    setIsLoading(true);
-    createConsensusSessionAndUserGroupAction(groupAddresses).then((resp) => {
-      if (typeof resp === 'number') {
-        toast.success('Session Created!');
-        router.push(`/play/${resp}`);
-      }
-    }).catch(() => toast.error('Oops! An error occured, please try again!'));
-    setIsLoading(false);
-  }
-
-  if (isLoading) return <Spinner />;
+  if (isLoading) return <Progress size="xs" isIndeterminate colorScheme={'cyan'} />;
 
   return (
     <>
       {
-        <FunButton
-          disabled={groupAddresses?.length <= 1}
-          onClick={() => createSessionHandler()}
-        >
-          Create Session ({groupAddresses?.length || 0})
-        </FunButton>
+        <SessionCreator groupAddresses={groupAddresses} />
       }
       <br />
       <br />
       <form className="border shadow-sm rounded-lg">
+        {/*<Input placeholder='Search for a user' />*/}
         <Table>
           <TableHeader>
             <TableRow>
