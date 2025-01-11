@@ -6,11 +6,13 @@ export type AuthContextType = {
   isLoggedIn: boolean;
   isAdmin: boolean;
   hasProfile: boolean;
+  walletAddress?: string;
 };
 
 export const AuthContext = createContext<AuthContextType>({
   isFirstAuthContextInit: false,
   isLoggedIn: false,
   isAdmin: false,
-  hasProfile: false
+  hasProfile: false,
+  walletAddress: ''
 });

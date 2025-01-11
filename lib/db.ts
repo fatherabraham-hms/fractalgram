@@ -216,7 +216,7 @@ export async function getUserProfileByWalletAddress(walletAddress: string) {
     lastlogin: users.lastlogin,
     permissions: users.permissions,
     telegram: users.telegram
-  }).from(users).limit(1).where(eq(users.walletaddress, walletAddress));
+  }).from(users).orderBy(desc(users.lastlogin)).limit(1).where(eq(users.walletaddress, walletAddress));
 }
 
 export async function getUserIdByWalletAddress(walletAddress: string) {
@@ -249,7 +249,7 @@ export async function createUserProfile(user: User) {
     walletaddress: user.wallet.address,
     loggedin: true,
     lastlogin: new Date(),
-    permissions: 1
+    permissions: 0
   }).returning(
     { id: users.id }
   );
@@ -265,7 +265,13 @@ export async function updateUserProfile(user: Partial<RespectUser>) {
     return { message: 'Username already exists, find an unused name' };
   }
 
-  return db.update(users).set({ ...user })
+  const query = db.update(users).set({
+    name: user.name,
+    username: user.username,
+    email: user.email,
+    telegram: user.telegram,
+    permissions: 1
+  })
     .where(eq(users.walletaddress, user.walletaddress))
     .returning({
       name: users.name,
@@ -276,6 +282,7 @@ export async function updateUserProfile(user: Partial<RespectUser>) {
       lastlogin: users.lastlogin,
       permissions: users.permissions
     });
+  return query;
 }
 
 // ************** ConsensusSessionsPgTable ****************** //
