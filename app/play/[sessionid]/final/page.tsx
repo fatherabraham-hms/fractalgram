@@ -43,6 +43,7 @@ export default function IndexPage({params}: { params: { sessionid: string };
     if (isNaN(sessionid)) {
       throw new Error('Invalid query parameter');
     }
+    setSafeSessionid(sessionid);
 
     if (safeSessionId) {
       getConsensusSessionWinnersAction(safeSessionId).then(
@@ -55,7 +56,7 @@ export default function IndexPage({params}: { params: { sessionid: string };
         }
       );
     }
-  }, []);
+  }, [safeSessionId]);
 
   async function makeOrecProposal() {
     let toastid = toast.loading('Connecting to orclient..');
