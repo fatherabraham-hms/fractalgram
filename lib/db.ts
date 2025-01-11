@@ -155,7 +155,7 @@ export async function getAllUsers(
           permissions: users.permissions
         })
         .from(users)
-        .where(and(eq(users.loggedin, true),gt(users.permissions, 0)))
+        .where(and(eq(users.loggedin, true),gt(users.permissions, 0),ne(users.email, '')))
         .orderBy(desc(users.loggedin))
         .limit(1000),
       newOffset: null
@@ -355,12 +355,12 @@ export async function getRecentSessionsForUserWalletAddress(walletaddress: strin
 export type ConsensusGroupsDbDto = typeof consensusGroups.$inferSelect;
 
 // TODO when do we inactivate a group? cron job?
-export async function createConsensusGroup(consensusSessionId: number, groupAddresses: string[], userid: number) {
-// console.log('createConsensusGroup');
+export async function createConsensusGroup(consensusSessionId: number, groupAddresses: string[], userid: number, grouplabel?: string) {
 
   const group = await db.insert(consensusGroups).values({
     sessionid: consensusSessionId,
     groupstatus: 1,
+    grouplabel: grouplabel || '',
     modifiedbyid: userid,
     created: new Date(),
     updated: new Date()
@@ -397,6 +397,18 @@ export async function getActiveGroupIdBySessionId(consensusSessionId: number) {
     return db.select({
       groupid: consensusGroups.groupid
     }).from(consensusGroups).where(and(eq(consensusGroups.sessionid, consensusSessionId), eq(consensusGroups.groupstatus, 1)));
+  }
+  return null;
+}
+
+export async function getActiveGroupBySessionId(consensusSessionId: number) {
+// console.log('getActiveGroupIdBySessionId');
+  if (consensusSessionId > 0) {
+    return db.select({
+      groupid: consensusGroups.groupid,
+      groupstatus: consensusGroups.groupstatus,
+      grouplabel: consensusGroups.grouplabel,
+      updated: consensusGroups.updated}).from(consensusGroups).where(and(eq(consensusGroups.sessionid, consensusSessionId), eq(consensusGroups.groupstatus, 1)));
   }
   return null;
 }
@@ -497,7 +509,7 @@ export async function getCurrentVotesForSessionByRanking(
   } else {
     statement.groupBy(users.walletaddress, consensusVotes.votedfor);
   }
-  // console.log(statement.toSQL());
+  console.log(statement.toSQL());
   return statement;
 }
 
@@ -543,12 +555,13 @@ export async function getRemainingVoteCandidatesForSession(consensusSessionId: n
     ))
     .where(where);
 
-  const { sql, params } = query.toSQL();
+  // const { sql, params } = query.toSQL();
   // console.log('SQL Query:', sql);
   // console.log('Parameters:', params);
   return query;
 }
 
+// TODO - check why we're not using session status here
 export async function getRankingsWithConsensusForSession(consensusSessionId: number, consensusSessionStatus: number, groupid: number) {
   // console.log('getExistingRankingValuesForSession');
   return db.selectDistinct({

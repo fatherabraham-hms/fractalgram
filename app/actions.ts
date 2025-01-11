@@ -24,8 +24,8 @@ import {
   getConsensusSession,
   getConsensusWinnersRankingsAndWalletAddresses,
   getRecentSessionsForUserWalletAddress,
-  createPrivyMap, SelectUserBeSession
-} from '@/lib/db';
+  createPrivyMap, SelectUserBeSession, getActiveGroupBySessionId
+} from "@/lib/db";
 import { User } from '@privy-io/server-auth';
 import { PrivyClient, AuthTokenClaims } from '@privy-io/server-auth';
 import { cookies, headers } from 'next/headers';
@@ -34,7 +34,7 @@ import { ConsensusSessionDto } from '@/lib/dtos/consensus-session.dto';
 import { ConsensusSessionSetupModel, Vote } from '@/lib/models/consensus-session-setup.model';
 import { CONSENSUS_LIMIT } from '../data/constants/app_constants';
 import { redirect } from 'next/navigation';
-import { UserBeContext } from '@/lib/models/user-be-context.model';
+import { GroupMeta, UserBeContext } from "@/lib/models/user-be-context.model";
 import { UserBeSessionsModel } from '@/lib/models/user-be-sessions.model';
 
 let isDevEnv = false;
@@ -78,7 +78,8 @@ async function isAuthorized() {
   debug('isAuthorized: checking BE auth');
   const claims = await checkAccessToken();
   if (!claims) {
-    throw new Error('Not authorized');
+    console.log('no claims found');
+    await logoutAction();
   }
   const privyUserId = { value: claims?.userId };
   const activeWalletAddress = cookies().get('activeWalletAddress');
@@ -304,7 +305,7 @@ const defaultConsensusSession: ConsensusSessionDto = {
   updated: new Date()
 };
 
-export async function createConsensusSessionAndUserGroupAction(groupAddresses: string[]) {
+export async function createConsensusSessionAndUserGroupAction(groupAddresses: string[], groupLabel: number): Promise<number | null> {
   await checkAccessToken();
   const session: ConsensusSessionDto = defaultConsensusSession;
   // TODO - check incoming session if updated
@@ -326,7 +327,7 @@ export async function createConsensusSessionAndUserGroupAction(groupAddresses: s
   if (consensusSessionResponse
     && consensusSessionResponse.length > 0
     && typeof consensusSessionResponse[0].sessionid === 'number') {
-    const groupCreated = await createConsensusGroup(consensusSessionResponse[0].sessionid, groupAddresses, userid);
+    const groupCreated = await createConsensusGroup(consensusSessionResponse[0].sessionid, groupAddresses, userid, groupLabel.toString());
     return groupCreated ? consensusSessionResponse[0].sessionid : null;
   }
   return null;
@@ -389,7 +390,7 @@ export async function setSingleVoteAction(
   await castSingleVoteForUser({
     votedfor: votedForUserId,
     sessionid: consensusSessionId,
-    groupid: context.groupid,
+    groupid: context.groupMeta?.groupid,
     rankingvalue: ranking,
     modifiedbyid: context.beSession.userid,
     created: new Date(),
@@ -399,10 +400,10 @@ export async function setSingleVoteAction(
 }
 
 async function getCurrentVotesForSessionByRankingAction(context: UserBeContext, consensusSessionId: number, ranking: number) {
-  if (!context || !context.groupid) {
+  if (!context || !context.groupMeta?.groupid) {
     throw new Error('Not authorized');
   }
-  return getCurrentVotesForSessionByRanking('walletaddress', consensusSessionId, context.groupid, ranking) as Promise<Vote[]>;
+  return getCurrentVotesForSessionByRanking('walletaddress', consensusSessionId, context.groupMeta?.groupid, ranking) as Promise<Vote[]>;
 }
 
 /*********** CONSENSUS STATUS ***********/
@@ -491,7 +492,7 @@ async function getRemainingRankingsForSessionAction(context: UserBeContext, cons
   }
   // TODO make this work with other ranking schemes
   const highestRanking = context.consensusSession?.rankinglimit || 6;
-  const rankingsWithConsensusResp = await getRankingsWithConsensusForSession(consensusSessionId, context.consensusSession?.sessionstatus, context.groupid);
+  const rankingsWithConsensusResp = await getRankingsWithConsensusForSession(consensusSessionId, context.consensusSession?.sessionstatus, context.groupMeta?.groupid);
   // NO VOTES YET
   // return list of all rankings, based on 'numeric-descending' if no rankings exist in db
   if (!rankingsWithConsensusResp || rankingsWithConsensusResp.length === 0) {
@@ -500,7 +501,7 @@ async function getRemainingRankingsForSessionAction(context: UserBeContext, cons
   } else if (rankingsWithConsensusResp.length > 0
     && context.consensusSession?.sessionstatus !== 2
     && typeof rankingsWithConsensusResp[0].rankingvalue === 'number') {
-    const consensusReachedForCurrentRanking = await _hasConsensusOnRanking(consensusSessionId, context.groupid, rankingsWithConsensusResp[0].rankingvalue);
+    const consensusReachedForCurrentRanking = await _hasConsensusOnRanking(consensusSessionId, context.groupMeta?.groupid, rankingsWithConsensusResp[0].rankingvalue);
     const existingRankings = rankingsWithConsensusResp.map((ranking) => ranking.rankingvalue) as number[];
 
     let remainingRankings: number[];
@@ -514,7 +515,7 @@ async function getRemainingRankingsForSessionAction(context: UserBeContext, cons
     // if there are no more rankings to vote on, set the session status to finished, etc..
     await _handleSessionUpdates(consensusSessionId,
       context.consensusSession.sessionstatus,
-      context.groupid,
+      context.groupMeta?.groupid,
       remainingRankings,
       context.beSession.userid);
     return remainingRankings;
@@ -525,25 +526,8 @@ async function getRemainingRankingsForSessionAction(context: UserBeContext, cons
 }
 
 export async function getConsensusSessionWinnersAction(consensusSessionId: number) {
-  const beSession = await isAuthorized();
-  if (!beSession || !beSession.sessionid || !beSession.walletaddress || !beSession.userid) {
-    throw new Error('Not authorized');
-  }
-  const isAdmin = await _isLoggedInUserAdmin(beSession);
-  const isMemberofSession = await isMemberOfSessionAction(consensusSessionId);
-  if (!isAdmin && !isMemberofSession) {
-    throw new Error('Not a member of session');
-  }
-  const groupid = await getActiveGroupIdBySessionId(consensusSessionId);
-  if (!groupid || groupid.length === 0 || typeof groupid[0].groupid !== 'number') {
-    throw new Error('Not a member of group');
-  }
-  const currentConsensusStatus = await getConsensusSession(consensusSessionId);
-  if (!currentConsensusStatus || currentConsensusStatus.length === 0
-    || !currentConsensusStatus[0]?.sessionstatus) {
-    throw new Error('Consensus session found');
-  }
-  if (currentConsensusStatus[0].sessionstatus !== 2) {
+  const context = await _createContext(consensusSessionId);
+  if (context.consensusSession?.sessionstatus !== 2) {
     throw new Error('Voting not finished');
   }
   const finalConsensus = await getConsensusWinnersRankingsAndWalletAddresses(consensusSessionId);
@@ -555,7 +539,8 @@ export async function getConsensusSessionWinnersAction(consensusSessionId: numbe
     return {
       rankingvalue: winner.rankingvalue,
       walletaddress: winner.walletaddress,
-      name: winner.name
+      name: winner.name,
+      grouplabel: context.groupMeta?.grouplabel
     };
   });
 }
@@ -564,7 +549,7 @@ async function _hasConsensusOnRankingAction(context: UserBeContext, consensusSes
   if (rankingValue === 0) {
     return false;
   }
-  return _hasConsensusOnRanking(consensusSessionId, context.groupid, rankingValue);
+  return _hasConsensusOnRanking(consensusSessionId, context.groupMeta?.groupid, rankingValue);
 }
 
 /*********** MULTI FUNCTIONAL CALLS ***********/
@@ -577,7 +562,7 @@ export async function getVotingRoundMultiAction(consensusSessionId: number) {
   if (remainingRankings && remainingRankings?.length > 0) {
     return {
       remainingRankings: remainingRankings,
-      currentVotesForRanking: await getCurrentVotesForSessionByRanking('walletaddress', consensusSessionId, context.groupid, remainingRankings[0]),
+      currentVotesForRanking: await getCurrentVotesForSessionByRanking('walletaddress', consensusSessionId, context.groupMeta?.groupid, remainingRankings[0]),
       remainingAttendees: await getRemainingAttendeesForSessionAction(consensusSessionId),
       groupMemberCount: await _getGroupMemberCountAction(context),
       hasConsensusOnRanking: await _hasConsensusOnRankingAction(context, consensusSessionId, remainingRankings[0])
@@ -641,7 +626,7 @@ export async function getVotingRoundMultiAction(consensusSessionId: number) {
         // take the second highest ranking, since the highest ranking is already set
         await setSingleRankingConsensus(
           consensusSessionId,
-          remainingRankings[1],
+          remainingRankings[0],
           lastAttendee[0].id,
           1,
           modifiedBy);
@@ -661,11 +646,11 @@ export async function getVotingRoundMultiAction(consensusSessionId: number) {
     if (!isAdmin && !isMemberofSession) {
       throw new Error('Not a member of session');
     }
-    const groupid = await getActiveGroupIdBySessionId(consensusSessionId);
-    if (!groupid || groupid.length === 0 || typeof groupid[0].groupid !== 'number') {
+    const groupMeta = await getActiveGroupBySessionId(consensusSessionId);
+    if (!groupMeta || groupMeta.length === 0 || typeof groupMeta[0].groupid !== 'number') {
       throw new Error('Not a member of group');
     }
-    const groupMembers = await getActiveGroupMembersByGroupId(groupid[0].groupid);
+    const groupMembers = await getActiveGroupMembersByGroupId(groupMeta[0].groupid);
     const currentSessionResp = await getConsensusSession(consensusSessionId);
     if (!currentSessionResp || currentSessionResp.length === 0
       || typeof currentSessionResp[0]?.sessionstatus !== 'number') {
@@ -674,7 +659,7 @@ export async function getVotingRoundMultiAction(consensusSessionId: number) {
     return {
       beSession: beSession,
       isAdmin,
-      groupid: groupid[0].groupid,
+      groupMeta: groupMeta[0] as GroupMeta,
       groupMembers,
       consensusSession: currentSessionResp[0] as ConsensusSessionDto
     };

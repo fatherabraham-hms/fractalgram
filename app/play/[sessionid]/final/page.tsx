@@ -16,6 +16,7 @@ export default function IndexPage({params}: { params: { sessionid: string };
     ConsensusWinnerModel[]
   >([]);
   const [isLoading, setLoading] = useState(true);
+  const [safeSessionId, setSafeSessionid] = useState(0);
   const {
     user,
   } = usePrivy();
@@ -31,22 +32,29 @@ export default function IndexPage({params}: { params: { sessionid: string };
   let warning = (
     <div className="flex items-center justify-center h-96">
       <h1 className="font-semibold text-lg md:text-2xl">
-        Looks like you're not a member of consensus session #{params?.sessionid}
+        Looks like you're not a member of consensus session #{safeSessionId}
         , sorry!
       </h1>
     </div>
   );
 
   useEffect(() => {
-    getConsensusSessionWinnersAction(parseInt(params.sessionid)).then(
-      (winnersResp) => {
-        if (winnersResp && winnersResp.length > 0) {
-          const results = winnersResp as unknown as ConsensusWinnerModel[];
-          setConsensusRankings(results);
-          setLoading(false);
+    const sessionid = parseInt(params?.sessionid);
+    if (isNaN(sessionid)) {
+      throw new Error('Invalid query parameter');
+    }
+
+    if (safeSessionId) {
+      getConsensusSessionWinnersAction(safeSessionId).then(
+        (winnersResp) => {
+          if (winnersResp && winnersResp.length > 0) {
+            const results = winnersResp as unknown as ConsensusWinnerModel[];
+            setConsensusRankings(results);
+            setLoading(false);
+          }
         }
-      }
-    );
+      );
+    }
   }, []);
 
   async function makeOrecProposal() {
@@ -61,13 +69,13 @@ export default function IndexPage({params}: { params: { sessionid: string };
       // This request object has to be the same for all participants of a breakout room.
       await orclient.proposeBreakoutResult({
         // TODO: set real groupNum and meetingNum
-        groupNum: 1,
-        meetingNum: 10,
+        groupNum: parseInt(consensusRankings[0]?.grouplabel) || 1,
+        meetingNum: safeSessionId,
         rankings: rankings,
         // Metadata field is optional.
         metadata: {
           // Could use this to provide names for each rank
-          propTitle: `Session ${params.sessionid}`,
+          propTitle: `Session ${safeSessionId}`,
           propDescription: rankedNames
         }
       }).then(() => {
