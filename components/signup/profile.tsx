@@ -7,11 +7,8 @@ import { useForm, SubmitHandler } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { RespectUser } from '@/lib/dtos/respect-user.dto';
 import { usePrivy } from '@privy-io/react-auth';
-import { useContext, useEffect, useState } from "react";
+import { useEffect } from 'react';
 import { getUserProfileByWalletAddress } from '@/lib/db';
-import { AuthContext } from "../../data/context/Contexts";
-import { Progress } from "@chakra-ui/react";
-import * as React from "react";
 
 type SignupInputs = {
   name: string;
@@ -28,7 +25,8 @@ export function Profile() {
   const router = useRouter();
   const {
     ready,
-    authenticated
+    authenticated,
+    user,
   } = usePrivy();
   const {
     register,
@@ -36,13 +34,10 @@ export function Profile() {
     setValue,
     formState: { errors },
   } = useForm<SignupInputs>()
-  const authContext = useContext(AuthContext);
-  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (ready && authenticated && authContext?.isLoggedIn && authContext?.walletAddress) {
-      setLoading(true);
-     getUserProfileByWalletAddress(authContext?.walletAddress).then((response) => {
+    if (ready && authenticated && user?.wallet?.address) {
+     getUserProfileByWalletAddress(user?.wallet?.address).then((response) => {
        let userProfile: UserProfileResponse;
        if (response && response.length > 0) {
           userProfile = response[0];
@@ -52,29 +47,21 @@ export function Profile() {
          setValue('email', email || '' );
          setValue('telegram', telegram || '');
        }
-       setLoading(false);
      }).catch(() => {
-       setLoading(false);
        console.error('Error fetching user profile');
      });
     }
-  }, [ready, authenticated, authContext, setValue]);
+  }, [ready, authenticated, user, setValue]);
 
-  const onSubmit: SubmitHandler<SignupInputs> = (formProps, event) => {
-    event?.preventDefault();
-    setLoading(true);
+  const onSubmit: SubmitHandler<SignupInputs> = (formProps) => {
     updateUserProfileAction({
       ...formProps,
-      walletaddress: authContext.walletAddress
+      walletaddress: user?.wallet?.address
     }).then((response: Partial<RespectUser> | { message: string }) => {
       if (response && !('message' in response)) {
-        setLoading(false);
+        router.push('/play');
         toast.success('Profile updated!');
-        setTimeout(() => {
-          router.push('/play');
-        }, 500);
       } else if (response && 'message' in response) {
-        setLoading(false);
         toast.error(response?.message);
       }
     })
@@ -86,7 +73,6 @@ export function Profile() {
   return (
     ready && authenticated && <div>
       <form className="w-full max-w-sm" onSubmit={handleSubmit(onSubmit)}>
-        {loading && <Progress size="xs" isIndeterminate colorScheme={'cyan'} />}
         <div className="md:flex md:items-center mb-6">
           <div className="md:w-1/3">
             <label className="block text-gray-500 font-bold md:text-right mb-1 md:mb-0 pr-4" htmlFor="inline-full-name">
