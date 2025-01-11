@@ -1,4 +1,4 @@
-import { pgTable } from 'drizzle-orm/pg-core';
+import { pgTable, varchar } from "drizzle-orm/pg-core";
 import { integer, serial, timestamp } from 'drizzle-orm/pg-core';
 import { UsersPgTable } from '@/lib/postgres_drizzle/users.orm';
 import { ConsensusSessionsPgTable } from '@/lib/postgres_drizzle/consensus_sessions.orm';
@@ -9,6 +9,7 @@ export const ConsensusGroupsPgTable = pgTable('consensus_groups', {
   groupid: serial('groupid').primaryKey(),
   sessionid: integer('sessionid').references(() => ConsensusSessionsPgTable.sessionid),
   groupstatus: smallint('groupstatus'),
+  grouplabel: varchar('grouplabel', { length: 200 }),
   modifiedbyid: integer('modifiedbyid').references(() => UsersPgTable.id),
   created: timestamp('created', { mode: 'date'}),
   updated: timestamp('updated', { mode: 'date' }).notNull().default(sql`now()`),
