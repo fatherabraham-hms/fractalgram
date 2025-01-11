@@ -8,7 +8,6 @@ export default function IndexPage() {
   const router = useRouter();
   const authContext = useContext(AuthContext);
   const { ready, authenticated } = usePrivy();
-  const [navigationInitiated, setNavigationInitiated] = useState(false);
 
   function routeToAppropriatePage() {
     if (authContext.isLoggedIn && !authContext.hasProfile) {
@@ -21,14 +20,12 @@ export default function IndexPage() {
   }
 
   useEffect(() => {
-    if (ready && !authenticated && !navigationInitiated) {
-      setNavigationInitiated(true);
+    if (ready && !authenticated) {
       router.push('/login');
-    } else if (ready && authenticated && !navigationInitiated) {
-      setNavigationInitiated(true);
+    } else if (ready && authenticated && !authContext.isFirstAuthContextInit) {
       routeToAppropriatePage();
     }
-  }, [authenticated, authContext.hasProfile]);
+  }, [ready, authenticated, router, authContext]);
 
   return (<main className="flex flex-1 flex-col"></main>);
 }
